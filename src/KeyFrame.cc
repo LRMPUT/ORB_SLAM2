@@ -53,7 +53,10 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
             mGrid[i][j] = F.mGrid[i][j];
     }
 
-    SetPose(F.mTcw);    
+    SetPose(F.mTcw);
+    imagePyramidLeft = F.mpORBextractorLeft->mvImagePyramid;
+    if (F.mpORBextractorRight)
+        imagePyramidRight = F.mpORBextractorRight->mvImagePyramid;
 }
 
 void KeyFrame::ComputeBoW()

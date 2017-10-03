@@ -188,6 +188,9 @@ public:
     const int mnMaxY;
     const cv::Mat mK;
 
+    // Image pyramids for photometric optimization
+    vector<cv::Mat> imagePyramidLeft, imagePyramidRight;
+
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:

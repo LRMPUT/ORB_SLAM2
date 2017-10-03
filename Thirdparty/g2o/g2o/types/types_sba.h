@@ -24,10 +24,13 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Code modified by Michal Nowicki
+
 #ifndef G2O_SBA_TYPES
 #define G2O_SBA_TYPES
 
 #include "../core/base_vertex.h"
+#include "../core/eigen_types.h"
 
 #include <Eigen/Geometry>
 #include <iostream>
@@ -55,6 +58,75 @@ namespace g2o {
       _estimate += v;
     }
 };
+
+    class CameraParameters : public g2o::Parameter {
+    public:
+
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+
+        CameraParameters();
+
+        CameraParameters(double focal_length_x,
+                         double focal_length_y,
+                         const Vector2D &principle_point,
+                         double baseline)
+                : focal_length_x(focal_length_x),
+                  focal_length_y(focal_length_y),
+                  principle_point(principle_point),
+                  baseline(baseline) {}
+
+        Vector2D cam_map(const Vector3D &trans_xyz) const;
+
+        Vector3D stereocam_uvu_map(const Vector3D &trans_xyz) const;
+
+        virtual bool read(std::istream &is) {
+            is >> focal_length_x;
+            is >> focal_length_y;
+            is >> principle_point[0];
+            is >> principle_point[1];
+            is >> baseline;
+            return true;
+        }
+
+        virtual bool write(std::ostream &os) const {
+            os << focal_length_x << " ";
+            os << focal_length_y << " ";
+            os << principle_point.x() << " ";
+            os << principle_point.y() << " ";
+            os << baseline << " ";
+            return true;
+        }
+
+        double focal_length_x, focal_length_y;
+        Vector2D principle_point;
+        double baseline;
+    };
+
+    /*
+     * \brief Point vertex, single inverse depth
+     */
+    class VertexSBAPointInvD : public BaseVertex<1, double>
+    {
+    public:
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+        VertexSBAPointInvD();
+        bool read(std::istream& is);
+        bool write(std::ostream& os) const;
+
+        virtual void setToOriginImpl() {
+            _estimate = 0;
+        }
+
+        virtual void oplusImpl(const double* update)
+        {
+            _estimate += update[0];
+        }
+
+        // u,v of the initial recognition
+        double u0, v0;
+    };
+
 
 } // end namespace
 
