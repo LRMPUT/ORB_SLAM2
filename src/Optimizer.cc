@@ -20,14 +20,6 @@
 
 #include "Optimizer.h"
 
-#include "Thirdparty/g2o/g2o/core/block_solver.h"
-#include "Thirdparty/g2o/g2o/core/optimization_algorithm_levenberg.h"
-#include "Thirdparty/g2o/g2o/solvers/linear_solver_eigen.h"
-#include "Thirdparty/g2o/g2o/types/types_six_dof_expmap.h"
-#include "Thirdparty/g2o/g2o/core/robust_kernel_impl.h"
-#include "Thirdparty/g2o/g2o/solvers/linear_solver_dense.h"
-#include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
-#include "Thirdparty/g2o/g2o/types/types_six_dof_photo.h"
 
 #include<Eigen/StdVector>
 
@@ -779,10 +771,41 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 }
 
 
+
+g2o::EdgeInverseDepthPatch* Optimizer::AddEdgeInverseDepthPatch(g2o::SparseOptimizer &optimizer, int featureId, KeyFrame* refKF, KeyFrame* curKF, double thHuber) {
+
+    g2o::EdgeInverseDepthPatch* e = new g2o::EdgeInverseDepthPatch();
+    e->resize(3);
+
+    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(featureId)));
+    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(curKF->mnId)));
+    e->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(refKF->mnId)));
+
+    g2o::OptimizableGraph::Vertex *v1 = dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(featureId));
+    g2o::OptimizableGraph::Vertex *v2 = dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(curKF->mnId));
+    g2o::OptimizableGraph::Vertex *v3 = dynamic_cast<g2o::OptimizableGraph::Vertex *>(optimizer.vertex(refKF->mnId));
+
+    if (!v1 || !v2 || !v3)
+        std::cout << "Vertices should exists but at least one doesn't. Why? Don't know yet" << std::endl;
+
+    Eigen::Matrix<double,9,1> obs = Eigen::Matrix<double,9,1>::Zero();
+    e->setMeasurement(obs);
+
+    e->setInformation(Eigen::Matrix<double,9,9>::Identity());
+
+    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    e->setRobustKernel(rk);
+    rk->setDelta(thHuber);
+
+    e->setParameterId(0, 0);
+
+    return e;
+}
+
 void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap) {
+    int optimizationPyramidScale = 0;
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
-    const int errorSize = 9;
 
     const int blockSolverCameras = 6;
     const int blockSolverPoses = 1;
@@ -892,9 +915,6 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     vector<MapPoint*> vpMapPointEdgeStereo;
     vpMapPointEdgeStereo.reserve(nExpectedSize);
 
-    const float thHuberMono = sqrt(5.991);
-    const float thHuberStereo = sqrt(7.815);
-
     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
         MapPoint *pMP = *lit;
@@ -925,43 +945,29 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         {
             KeyFrame* pKFi = mit->first;
 
-            // First observation is treated differently -> it is not added at all
-            if (refKF == pKFi)
-                continue;
-
             if(!pKFi->isBad())
             {
-                const cv::KeyPoint &kpUn = pKFi->mvKeysUn[mit->second];
+
+                g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+
+                double baseline = refKF->mbf / refKF->fx;
+                // It is the same pose, so it is the left-right stereo constraint
+                if (refKF == pKFi)
+                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline, optimizationPyramidScale);
+                else {
+
+                    // Other pose so left to anchor and right to anchor
+                    if ( baseline < 0.0000000001 )
+                        e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0, optimizationPyramidScale);
+                    else
+                        e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline, optimizationPyramidScale);
+                }
 
 
-                    Eigen::Matrix<double,3,1> obs;
-                    const float kp_ur = pKFi->mvuRight[mit->second];
-                    obs << kpUn.pt.x, kpUn.pt.y, kp_ur;
-
-                    g2o::EdgeStereoSE3ProjectXYZ* e = new g2o::EdgeStereoSE3ProjectXYZ();
-
-                    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));
-                    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKFi->mnId)));
-                    e->setMeasurement(obs);
-                    const float &invSigma2 = pKFi->mvInvLevelSigma2[kpUn.octave];
-                    Eigen::Matrix3d Info = Eigen::Matrix3d::Identity()*invSigma2;
-                    e->setInformation(Info);
-
-                    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-                    e->setRobustKernel(rk);
-                    rk->setDelta(thHuberStereo);
-
-                    e->fx = pKFi->fx;
-                    e->fy = pKFi->fy;
-                    e->cx = pKFi->cx;
-                    e->cy = pKFi->cy;
-                    e->bf = pKFi->mbf;
-
-                    optimizer.addEdge(e);
-                    vpEdgesStereo.push_back(e);
-                    vpEdgeKFStereo.push_back(pKFi);
-                    vpMapPointEdgeStereo.push_back(pMP);
-                
+                optimizer.addEdge(e);
+                vpEdgesStereo.push_back(e);
+                vpEdgeKFStereo.push_back(pKFi);
+                vpMapPointEdgeStereo.push_back(pMP);
             }
         }
     }
@@ -983,31 +989,15 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     {
 
         // Check inlier observations
-        for(size_t i=0, iend=vpEdgesMono.size(); i<iend;i++)
-        {
-            g2o::EdgeSE3ProjectXYZ* e = vpEdgesMono[i];
-            MapPoint* pMP = vpMapPointEdgeMono[i];
-
-            if(pMP->isBad())
-                continue;
-
-            if(e->chi2()>5.991 || !e->isDepthPositive())
-            {
-                e->setLevel(1);
-            }
-
-            e->setRobustKernel(0);
-        }
-
         for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++)
         {
-            g2o::EdgeStereoSE3ProjectXYZ* e = vpEdgesStereo[i];
+            g2o::EdgeInverseDepthPatch* e = vpEdgesStereo[i];
             MapPoint* pMP = vpMapPointEdgeStereo[i];
 
             if(pMP->isBad())
                 continue;
 
-            if(e->chi2()>7.815 || !e->isDepthPositive())
+            if(e->chi2()>thHuberSquared || !e->isDepthPositive())
             {
                 e->setLevel(1);
             }
@@ -1023,33 +1013,16 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     }
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
-    vToErase.reserve(vpEdgesMono.size()+vpEdgesStereo.size());
-
-    // Check inlier observations
-    for(size_t i=0, iend=vpEdgesMono.size(); i<iend;i++)
-    {
-        g2o::EdgeSE3ProjectXYZ* e = vpEdgesMono[i];
-        MapPoint* pMP = vpMapPointEdgeMono[i];
-
-        if(pMP->isBad())
-            continue;
-
-        if(e->chi2()>5.991 || !e->isDepthPositive())
-        {
-            KeyFrame* pKFi = vpEdgeKFMono[i];
-            vToErase.push_back(make_pair(pKFi,pMP));
-        }
-    }
 
     for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++)
     {
-        g2o::EdgeStereoSE3ProjectXYZ* e = vpEdgesStereo[i];
+        g2o::EdgeInverseDepthPatch* e = vpEdgesStereo[i];
         MapPoint* pMP = vpMapPointEdgeStereo[i];
 
         if(pMP->isBad())
             continue;
 
-        if(e->chi2()>7.815 || !e->isDepthPositive())
+        if(e->chi2()>thHuberSquared || !e->isDepthPositive())
         {
             KeyFrame* pKFi = vpEdgeKFStereo[i];
             vToErase.push_back(make_pair(pKFi,pMP));
@@ -1084,9 +1057,23 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     //Points
     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
-        MapPoint* pMP = *lit;
-        g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
-        pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
+        MapPoint *pMP = *lit;
+
+        g2o::VertexSBAPointInvD *vPoint = static_cast<g2o::VertexSBAPointInvD *>(optimizer.vertex(
+                pMP->mnId + maxKFid + 1));
+        KeyFrame *refKF = pMP->GetReferenceKeyFrame();
+
+        cv::Mat pointInFirst = cv::Mat(3, 1, CV_32F), worldPos = cv::Mat(3, 1, CV_32F);
+        pointInFirst.at<float>(2) = 1. / vPoint->estimate();
+        pointInFirst.at<float>(0) = (vPoint->u0 - refKF->cx) * pointInFirst.at<float>(2) / refKF->fx;
+        pointInFirst.at<float>(1) = (vPoint->v0 - refKF->cy) * pointInFirst.at<float>(2) / refKF->fy;
+
+
+        cv::Mat worldPointPos =
+                refKF->GetRotation().t() * pointInFirst -
+                refKF->GetRotation().t() * refKF->GetTranslation();
+
+        pMP->SetWorldPos(worldPointPos);
         pMP->UpdateNormalAndDepth();
     }
 

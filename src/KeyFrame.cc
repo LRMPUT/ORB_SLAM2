@@ -54,9 +54,9 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     }
 
     SetPose(F.mTcw);
-    imagePyramidLeft = F.mpORBextractorLeft->mvImagePyramid;
+    imagePyramidLeft = F.mpORBextractorLeft->photobaImagePyramid;
     if (F.mpORBextractorRight)
-        imagePyramidRight = F.mpORBextractorRight->mvImagePyramid;
+        imagePyramidRight = F.mpORBextractorRight->photobaImagePyramid;
 }
 
 void KeyFrame::ComputeBoW()
