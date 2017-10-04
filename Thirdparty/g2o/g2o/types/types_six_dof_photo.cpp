@@ -41,6 +41,7 @@ namespace g2o {
 
 
     void EdgeInverseDepthPatch::computeError() {
+//        std:: cout << "EdgeInverseDepthPatch::computeError()"<< std::endl;
 
         const VertexSBAPointInvD *pointInvD = static_cast<const VertexSBAPointInvD *>(_vertices[0]);
         const VertexSE3Expmap *T_p_from_world = static_cast<const VertexSE3Expmap *>(_vertices[1]);
@@ -90,7 +91,7 @@ namespace g2o {
             const double bottomRight = xSub * ySub;
 
 
-            if (yInt < 0 || xInt < 0 || yInt + 1 > imgObs->image[0].size() || xInt + 1 > imgObs->image.size() )
+            if (yInt < 0 || xInt < 0 || yInt + 1 > imgObs->image.size() || xInt + 1 > imgObs->image[0].size() )
             {
 //                std::cout << "Outside patch: " << yInt << " " << xInt << "  PatchOffset: " << patchOffsetU << " " << patchOffsetV << std::endl;
 //                std::cout << "\t" << projectedPoint[0] << " " << _measurement[0] << " " << projectedPoint[1] << " " << _measurement[1] << std::endl;
@@ -113,6 +114,7 @@ namespace g2o {
 //                          << projectedPoint[0] << ". " << projectedPoint[1] << ")" << std::endl;
 //                std::cout << "computedError(i,0) = " << refValue << " " << obsValue << std::endl;
 //            }
+//            std:: cout << "refValue = " << refValue << " obsValue: " << obsValue << std::endl;
         }
 
         _error = computedError;
@@ -248,6 +250,9 @@ namespace g2o {
 
         double cx = cam->principle_point[0], cy = cam->principle_point[1];
         double fx = cam->focal_length_x, fy = cam->focal_length_y;
+
+        if (pointInvD->estimate() < 0.000000000001)
+            return false;
 
         Eigen::Vector3d pointInAnchor;
         pointInAnchor[2] = 1. / pointInvD->estimate();

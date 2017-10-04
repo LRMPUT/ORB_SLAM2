@@ -1052,6 +1052,9 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     // Pre-compute the scale pyramid
     ComputePyramid(image);
 
+    // Pre-compute the image gradient and floating-point pyramid
+    ComputePhotometricBAPyramid(image);
+
     vector < vector<KeyPoint> > allKeypoints;
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);
@@ -1111,7 +1114,7 @@ void ORBextractor::ComputePyramid(cv::Mat image)
         float scale = mvInvScaleFactor[level];
         Size sz(cvRound((float)image.cols*scale), cvRound((float)image.rows*scale));
         Size wholeSize(sz.width + EDGE_THRESHOLD*2, sz.height + EDGE_THRESHOLD*2);
-        Mat temp(wholeSize, image.type()), masktemp;
+        Mat temp(wholeSize, image.type());
         mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
 
         // Compute the resized image
@@ -1130,5 +1133,58 @@ void ORBextractor::ComputePyramid(cv::Mat image)
     }
 
 }
+
+void ORBextractor::ComputePhotometricBAPyramid(cv::Mat image)
+{
+    cv::Mat floatImage;
+    image.convertTo(floatImage, CV_32FC1);
+
+    std::vector<cv::Mat> floatPyramid(nlevels);
+
+    for (int level = 0; level < nlevels; ++level) {
+        float scale = mvInvScaleFactor[level];
+        Size sz(cvRound((float) floatImage.cols * scale), cvRound((float) floatImage.rows * scale));
+        Size wholeSize(sz.width + EDGE_THRESHOLD * 2, sz.height + EDGE_THRESHOLD * 2);
+        Mat temp(wholeSize, floatImage.type());
+        floatPyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
+
+        // Compute the resized image
+        if (level != 0) {
+            resize(floatPyramid[level - 1], floatPyramid[level], sz, 0, 0, INTER_LINEAR);
+
+            copyMakeBorder(floatPyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
+                           BORDER_REFLECT_101 + BORDER_ISOLATED);
+        } else {
+            copyMakeBorder(floatImage, temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
+                           BORDER_REFLECT_101);
+        }
+    }
+
+   photobaImagePyramid = std::vector<g2o::imgStr*>(nlevels);
+    for (int level = 0; level < nlevels; ++level) {
+        photobaImagePyramid[level] = new g2o::imgStr;
+
+        int rows = floatPyramid[level].rows;
+        int cols = floatPyramid[level].cols;
+
+        photobaImagePyramid[level]->image = std::vector< std::vector<float> >(rows, std::vector<float>(cols));
+        photobaImagePyramid[level]->gradient = std::vector< std::vector< Eigen::Vector2f> >(rows, std::vector< Eigen::Vector2f >(cols, Eigen::Vector2f::Zero()));
+
+        for (int y = 0; y < rows; y++)
+            for (int x = 0; x < cols; x++)
+                photobaImagePyramid[level]->image[y][x] = floatPyramid[level].at<float>(y, x);
+
+        for (int y = 1; y < rows - 1; y++)
+            for (int x = 1; x < cols - 1; x++) {
+                photobaImagePyramid[level]->gradient[y][x][0] =
+                        0.5 * (floatPyramid[level].at<float>(y + 1, x) - floatPyramid[level].at<float>(y - 1, x));
+                photobaImagePyramid[level]->gradient[y][x][1] =
+                        0.5 * (floatPyramid[level].at<float>(y, x+1) - floatPyramid[level].at<float>(y, x-1));
+            }
+    }
+
+}
+
+
 
 } //namespace ORB_SLAM

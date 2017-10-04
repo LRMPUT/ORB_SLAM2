@@ -69,6 +69,8 @@ public:
     // Modification by Michal Nowicki
     void static LocalPhotometricBundleAdjustment(KeyFrame* pKF, bool *pbStopFlag, Map *pMap);
     static g2o::EdgeInverseDepthPatch* AddEdgeInverseDepthPatch(g2o::SparseOptimizer &optimizer, int featureId, KeyFrame* refKF, KeyFrame* curKF, double thHuber);
+
+    double static ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges);
 };
 
 } //namespace ORB_SLAM

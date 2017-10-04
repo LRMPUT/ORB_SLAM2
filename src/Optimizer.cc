@@ -802,8 +802,24 @@ g2o::EdgeInverseDepthPatch* Optimizer::AddEdgeInverseDepthPatch(g2o::SparseOptim
     return e;
 }
 
+double Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges) {
+    double chi2Sum = 0;
+    int chi2Count = 0;
+
+    for(size_t i=0, iend=edges.size(); i<iend;i++)
+    {
+        g2o::EdgeInverseDepthPatch* e = edges[i];
+        chi2Sum += e->chi2();
+        chi2Count++;
+    }
+    return chi2Sum/chi2Count;
+}
+
 void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap) {
-    int optimizationPyramidScale = 0;
+    std::cout << "Optimizer::LocalPhotometricBundleAdjustment" << std::endl;
+    int optimizationPyramidIndex = 0;
+    float optimizationPyramidScale = 1;
+
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
 
@@ -875,6 +891,14 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     if(pbStopFlag)
         optimizer.setForceStopFlag(pbStopFlag);
 
+    Eigen::Vector2d principal_point(pKF->cx, pKF->cy);
+    g2o::CameraParameters * cam_params
+            = new g2o::CameraParameters (pKF->fx, pKF->fy, principal_point, 0.);
+    cam_params->setId(0);
+    if (!optimizer.addParameter(cam_params)){
+        assert(false);
+    }
+
     unsigned long maxKFid = 0;
 
     // Set Local KeyFrame vertices
@@ -932,8 +956,6 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         int indexOfFirstObs = observations.find(refKF)->second;
         vPoint->u0 = refKF->mvKeysUn[indexOfFirstObs].pt.x;
         vPoint->v0 = refKF->mvKeysUn[indexOfFirstObs].pt.y;
-        const int level = refKF->mvKeysUn[indexOfFirstObs].octave;
-        const double refScaleFactor = refKF->mvScaleFactors[level];
 
         int id = pMP->mnId+maxKFid+1;
         vPoint->setId(id);
@@ -948,24 +970,38 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
             if(!pKFi->isBad())
             {
 
+
                 g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
 
                 double baseline = refKF->mbf / refKF->fx;
                 // It is the same pose, so it is the left-right stereo constraint
-                if (refKF == pKFi)
-                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline, optimizationPyramidScale);
+                if (refKF == pKFi) {
+                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], refKF->imagePyramidRight[optimizationPyramidIndex],
+                                         baseline, optimizationPyramidScale);
+                    optimizer.addEdge(e);
+                    vpEdgesStereo.push_back(e);
+                }
                 else {
-
                     // Other pose so left to anchor and right to anchor
-                    if ( baseline < 0.0000000001 )
-                        e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0, optimizationPyramidScale);
-                    else
-                        e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline, optimizationPyramidScale);
+
+                    // Left to anchor
+                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidLeft[optimizationPyramidIndex],
+                                             0, optimizationPyramidScale);
+                    optimizer.addEdge(e);
+                    vpEdgesStereo.push_back(e);
+                    vpEdgeKFStereo.push_back(pKFi);
+                    vpMapPointEdgeStereo.push_back(pMP);
+
+                    // Right to anchor
+                    g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidRight[optimizationPyramidIndex],
+                                             baseline, optimizationPyramidScale);
+                    optimizer.addEdge(e);
+                    vpEdgesStereo.push_back(e);
                 }
 
 
-                optimizer.addEdge(e);
-                vpEdgesStereo.push_back(e);
+
                 vpEdgeKFStereo.push_back(pKFi);
                 vpMapPointEdgeStereo.push_back(pMP);
             }
@@ -976,8 +1012,29 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         if(*pbStopFlag)
             return;
 
+    std::cout << "Edges.size() : " << optimizer.edges().size() << " Vertices.size() : " <<optimizer.vertices().size() << std::endl ;
+
     optimizer.initializeOptimization();
+
+    std::cout << "After initialize optimization" << std::endl;
+
+    // Check inlier observations
+    for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++) {
+        g2o::EdgeInverseDepthPatch *e = vpEdgesStereo[i];
+        MapPoint *pMP = vpMapPointEdgeStereo[i];
+
+        if (pMP->isBad())
+            continue;
+
+        if (e->chi2() > thHuberSquared || !e->isDepthPositive()) {
+            e->setLevel(1);
+        }
+    }
+
+    optimizer.initializeOptimization(0);
+    std::cout << "Before avg. chi2 : " << Optimizer::ComputeAvgChi2(vpEdgesStereo) << std::endl;
     optimizer.optimize(5);
+    std::cout << "After avg. chi2 : " << Optimizer::ComputeAvgChi2(vpEdgesStereo) << std::endl;
 
     bool bDoMore= true;
 

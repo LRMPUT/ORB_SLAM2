@@ -22,8 +22,8 @@ namespace g2o {
     typedef Eigen::Matrix<double,9,1,Eigen::ColMajor> Vector9D;
 
     struct imgStr {
-        std::vector< std::vector<double > > image;
-        std::vector< std::vector<Eigen::Vector2d > > gradient;
+        std::vector< std::vector< float> > image;
+        std::vector< std::vector< Eigen::Vector2f > > gradient;
     };
 
     class EdgeInverseDepthPatch : public g2o::BaseMultiEdge<9, Vector9D> {

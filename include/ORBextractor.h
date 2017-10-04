@@ -83,11 +83,12 @@ public:
     }
 
     std::vector<cv::Mat> mvImagePyramid;
-    g2o::imgStr* photobaImagePyramid;
+    std::vector<g2o::imgStr*> photobaImagePyramid;
 
 protected:
 
     void ComputePyramid(cv::Mat image);
+    void ComputePhotometricBAPyramid(cv::Mat image);
     void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);    
     std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                            const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
