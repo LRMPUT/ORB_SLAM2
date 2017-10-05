@@ -645,6 +645,8 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
         }
     }
 
+    std::cout << "Mono: " << vpEdgesMono.size() << " Stereo: " << vpEdgesStereo.size() << std::endl;
+
     if(pbStopFlag)
         if(*pbStopFlag)
             return;
@@ -791,7 +793,7 @@ g2o::EdgeInverseDepthPatch* Optimizer::AddEdgeInverseDepthPatch(g2o::SparseOptim
     Eigen::Matrix<double,9,1> obs = Eigen::Matrix<double,9,1>::Zero();
     e->setMeasurement(obs);
 
-    e->setInformation(Eigen::Matrix<double,9,9>::Identity());
+    e->setInformation(Eigen::Matrix<double,9,9>::Identity() / 9);
 
     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
     e->setRobustKernel(rk);
@@ -802,20 +804,28 @@ g2o::EdgeInverseDepthPatch* Optimizer::AddEdgeInverseDepthPatch(g2o::SparseOptim
     return e;
 }
 
-double Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges) {
+std::string Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges,  vector<MapPoint*> &vpMapPointEdgeStereo, double thHuberSquared) {
     double chi2Sum = 0;
     int chi2Count = 0;
 
     for(size_t i=0, iend=edges.size(); i<iend;i++)
     {
         g2o::EdgeInverseDepthPatch* e = edges[i];
-        chi2Sum += e->chi2();
-        chi2Count++;
+        MapPoint *pMP = vpMapPointEdgeStereo[i];
+
+        if (pMP->isBad())
+            continue;
+
+        e->computeError();
+        if (e->chi2() <= thHuberSquared && e->isDepthPositive()) {
+            chi2Sum += e->chi2();
+            chi2Count++;
+        }
     }
-    return chi2Sum/chi2Count;
+    return "avg. chi2 : " + to_string(chi2Sum/chi2Count) + " over " + to_string(chi2Count) + " inliers" ;
 }
 
-void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap) {
+void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool* pbStopFlag, Map* pMap) {
     std::cout << "Optimizer::LocalPhotometricBundleAdjustment" << std::endl;
     int optimizationPyramidIndex = 0;
     float optimizationPyramidScale = 1;
@@ -826,19 +836,19 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     const int blockSolverCameras = 6;
     const int blockSolverPoses = 1;
 
-    // Local KeyFrames: First Breath Search from Current Keyframe
-    list<KeyFrame*> lLocalKeyFrames;
 
-    lLocalKeyFrames.push_back(pKF);
-    pKF->mnBALocalForKF = pKF->mnId;
+    KeyFrame* firstKF = lLocalKeyFrames.back();
 
-    const vector<KeyFrame*> vNeighKFs = pKF->GetVectorCovisibleKeyFrames();
-    for(int i=0, iend=vNeighKFs.size(); i<iend; i++)
-    {
-        KeyFrame* pKFi = vNeighKFs[i];
-        pKFi->mnBALocalForKF = pKF->mnId;
-        if(!pKFi->isBad())
-            lLocalKeyFrames.push_back(pKFi);
+    firstKF->mnBALocalForKF = firstKF->mnId;
+
+    // TODO: FirstKF can be bad?
+    for (auto it = lLocalKeyFrames.begin(); it!= lLocalKeyFrames.end();) {
+        if ((*it)->isBad())
+            it = lLocalKeyFrames.erase(it);
+        else {
+            (*it)->mnBALocalForKF = firstKF->mnId;
+            it++;
+        }
     }
 
     // Local MapPoints seen in Local KeyFrames
@@ -851,29 +861,11 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
             MapPoint* pMP = *vit;
             if(pMP)
                 if(!pMP->isBad())
-                    if(pMP->mnBALocalForKF!=pKF->mnId)
+                    if(pMP->mnBALocalForKF!=firstKF->mnId)
                     {
                         lLocalMapPoints.push_back(pMP);
-                        pMP->mnBALocalForKF=pKF->mnId;
+                        pMP->mnBALocalForKF=firstKF->mnId;
                     }
-        }
-    }
-
-    // Fixed Keyframes. Keyframes that see Local MapPoints but that are not Local Keyframes
-    list<KeyFrame*> lFixedCameras;
-    for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
-    {
-        map<KeyFrame*,size_t> observations = (*lit)->GetObservations();
-        for(map<KeyFrame*,size_t>::iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
-        {
-            KeyFrame* pKFi = mit->first;
-
-            if(pKFi->mnBALocalForKF!=pKF->mnId && pKFi->mnBAFixedForKF!=pKF->mnId)
-            {
-                pKFi->mnBAFixedForKF=pKF->mnId;
-                if(!pKFi->isBad())
-                    lFixedCameras.push_back(pKFi);
-            }
         }
     }
 
@@ -891,9 +883,9 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     if(pbStopFlag)
         optimizer.setForceStopFlag(pbStopFlag);
 
-    Eigen::Vector2d principal_point(pKF->cx, pKF->cy);
+    Eigen::Vector2d principal_point(firstKF->cx, firstKF->cy);
     g2o::CameraParameters * cam_params
-            = new g2o::CameraParameters (pKF->fx, pKF->fy, principal_point, 0.);
+            = new g2o::CameraParameters (firstKF->fx, firstKF->fy, principal_point, 0.);
     cam_params->setId(0);
     if (!optimizer.addParameter(cam_params)){
         assert(false);
@@ -908,27 +900,15 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
         vSE3->setEstimate(Converter::toSE3Quat(pKFi->GetPose()));
         vSE3->setId(pKFi->mnId);
-        vSE3->setFixed(pKFi->mnId==0);
+        vSE3->setFixed(pKFi->mnId==firstKF->mnId);
         optimizer.addVertex(vSE3);
         if(pKFi->mnId>maxKFid)
             maxKFid=pKFi->mnId;
     }
 
-    // Set Fixed KeyFrame vertices
-    for(list<KeyFrame*>::iterator lit=lFixedCameras.begin(), lend=lFixedCameras.end(); lit!=lend; lit++)
-    {
-        KeyFrame* pKFi = *lit;
-        g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
-        vSE3->setEstimate(Converter::toSE3Quat(pKFi->GetPose()));
-        vSE3->setId(pKFi->mnId);
-        vSE3->setFixed(true);
-        optimizer.addVertex(vSE3);
-        if(pKFi->mnId>maxKFid)
-            maxKFid=pKFi->mnId;
-    }
 
     // Set MapPoint vertices
-    const int nExpectedSize = (lLocalKeyFrames.size()+lFixedCameras.size())*lLocalMapPoints.size();
+    const int nExpectedSize = lLocalKeyFrames.size()*lLocalMapPoints.size();
 
     vector<g2o::EdgeInverseDepthPatch*> vpEdgesStereo;
     vpEdgesStereo.reserve(nExpectedSize);
@@ -943,8 +923,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     {
         MapPoint *pMP = *lit;
         KeyFrame *refKF = pMP->GetReferenceKeyFrame();
-        const map<KeyFrame *, size_t> observations = pMP->GetObservations();
 
+        // Is first observation in local keyframes containing image and gradient
+        bool found = (std::find(lLocalKeyFrames.begin(), lLocalKeyFrames.end(), refKF) != lLocalKeyFrames.end());
+        if (!found)
+            continue;
+
+        const map<KeyFrame *, size_t> observations = pMP->GetObservations();
         g2o::VertexSBAPointInvD *vPoint = new g2o::VertexSBAPointInvD();
 
         // Moving from world coordinate to local coordinate in ref kf and then saving depth as inverse Z
@@ -966,6 +951,11 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
         {
             KeyFrame* pKFi = mit->first;
+
+            // Let's check if observation keyframe is in the list
+            bool found = (std::find(lLocalKeyFrames.begin(), lLocalKeyFrames.end(), pKFi) != lLocalKeyFrames.end());
+            if (!found)
+                continue;
 
             if(!pKFi->isBad())
             {
@@ -1014,27 +1004,26 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
 
     std::cout << "Edges.size() : " << optimizer.edges().size() << " Vertices.size() : " <<optimizer.vertices().size() << std::endl ;
 
-    optimizer.initializeOptimization();
+    optimizer.initializeOptimization(0);
 
     std::cout << "After initialize optimization" << std::endl;
 
     // Check inlier observations
-    for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++) {
-        g2o::EdgeInverseDepthPatch *e = vpEdgesStereo[i];
-        MapPoint *pMP = vpMapPointEdgeStereo[i];
+//    for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++) {
+//        g2o::EdgeInverseDepthPatch *e = vpEdgesStereo[i];
+//        MapPoint *pMP = vpMapPointEdgeStereo[i];
+//
+//        if (pMP->isBad())
+//            continue;
+//
+//        if (e->chi2() > thHuberSquared || !e->isDepthPositive()) {
+//            e->setLevel(1);
+//        }
+//    }
 
-        if (pMP->isBad())
-            continue;
-
-        if (e->chi2() > thHuberSquared || !e->isDepthPositive()) {
-            e->setLevel(1);
-        }
-    }
-
-    optimizer.initializeOptimization(0);
-    std::cout << "Before avg. chi2 : " << Optimizer::ComputeAvgChi2(vpEdgesStereo) << std::endl;
+    std::cout << "Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
     optimizer.optimize(5);
-    std::cout << "After avg. chi2 : " << Optimizer::ComputeAvgChi2(vpEdgesStereo) << std::endl;
+    std::cout << "After " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
 
     bool bDoMore= true;
 
@@ -1044,7 +1033,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
 
     if(bDoMore)
     {
-
+        int inlierCount = 0;
         // Check inlier observations
         for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++)
         {
@@ -1057,11 +1046,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
             if(e->chi2()>thHuberSquared || !e->isDepthPositive())
             {
                 e->setLevel(1);
-            }
+            } else
+                inlierCount ++;
 
             e->setRobustKernel(0);
         }
 
+        std::cout << "Inlier count: " << inlierCount << std::endl;
         // Optimize again without the outliers
 
         optimizer.initializeOptimization(0);
@@ -1101,6 +1092,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
     }
 
     // Recover optimized data
+    std::cout << "Recover optimized data" << std::endl;
 
     //Keyframes
     for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
@@ -1111,6 +1103,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
         pKF->SetPose(Converter::toCvMat(SE3quat));
     }
 
+    std::cout << "Recover points" << std::endl;
+
     //Points
     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
@@ -1118,22 +1112,30 @@ void Optimizer::LocalPhotometricBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag
 
         g2o::VertexSBAPointInvD *vPoint = static_cast<g2o::VertexSBAPointInvD *>(optimizer.vertex(
                 pMP->mnId + maxKFid + 1));
+
         KeyFrame *refKF = pMP->GetReferenceKeyFrame();
 
-        cv::Mat pointInFirst = cv::Mat(3, 1, CV_32F), worldPos = cv::Mat(3, 1, CV_32F);
-        pointInFirst.at<float>(2) = 1. / vPoint->estimate();
-        pointInFirst.at<float>(0) = (vPoint->u0 - refKF->cx) * pointInFirst.at<float>(2) / refKF->fx;
-        pointInFirst.at<float>(1) = (vPoint->v0 - refKF->cy) * pointInFirst.at<float>(2) / refKF->fy;
+        if(vPoint && refKF) {
 
+            cv::Mat pointInFirst = cv::Mat(3, 1, CV_32F), worldPos = cv::Mat(3, 1, CV_32F);
+            pointInFirst.at<float>(2) = 1. / vPoint->estimate();
+            pointInFirst.at<float>(0) = (vPoint->u0 - refKF->cx) * pointInFirst.at<float>(2) / refKF->fx;
+            pointInFirst.at<float>(1) = (vPoint->v0 - refKF->cy) * pointInFirst.at<float>(2) / refKF->fy;
 
-        cv::Mat worldPointPos =
-                refKF->GetRotation().t() * pointInFirst -
-                refKF->GetRotation().t() * refKF->GetTranslation();
+            cv::Mat worldPointPos =
+                    refKF->GetRotation().t() * pointInFirst -
+                    refKF->GetRotation().t() * refKF->GetTranslation();
 
-        pMP->SetWorldPos(worldPointPos);
-        pMP->UpdateNormalAndDepth();
+            pMP->SetWorldPos(worldPointPos);
+            pMP->UpdateNormalAndDepth();
+        }
+
+//        if(!vPoint)
+//            std::cout << "Something wrong with point " << pMP->mnId + maxKFid + 1 << " " << optimizer.vertices().size() << std::endl;
+//        if(!refKF)
+//            std::cout << "Something wrong with refKF " << std::endl;
     }
-
+    std::cout << "Optimizer::LocalPhotometricBundleAdjustment -- END" << std::endl;
 }
 
 

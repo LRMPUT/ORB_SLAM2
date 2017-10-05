@@ -36,6 +36,9 @@ void LoadImages(const string &strPathToSequence, vector<string> &vstrImageLeft,
 
 int main(int argc, char **argv)
 {
+    // Slowing down the processing of the sequence
+    double playbackSpeed = 0.1;
+
     if(argc != 4)
     {
         cerr << endl << "Usage: ./stereo_kitti path_to_vocabulary path_to_settings path_to_sequence" << endl;
@@ -51,7 +54,7 @@ int main(int argc, char **argv)
     const int nImages = vstrImageLeft.size();
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,true);
+    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,false);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
@@ -103,8 +106,8 @@ int main(int argc, char **argv)
         else if(ni>0)
             T = tframe-vTimestamps[ni-1];
 
-        if(ttrack<T)
-            usleep((T-ttrack)*1e6);
+        if(ttrack<T/playbackSpeed)
+            usleep((T/playbackSpeed-ttrack)*1e6);
     }
 
     // Stop all threads

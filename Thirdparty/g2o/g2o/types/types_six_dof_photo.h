@@ -87,6 +87,7 @@ namespace g2o {
             return res;
         }
 
+        inline double getSubpixImageValue(double u, double v, std::vector< std::vector< float> > &image);
 
         std::vector< std::pair<double, double> > neighbours;
 

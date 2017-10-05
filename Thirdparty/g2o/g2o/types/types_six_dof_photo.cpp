@@ -39,6 +39,28 @@ namespace g2o {
         return true;
     }
 
+    double EdgeInverseDepthPatch::getSubpixImageValue(double u, double v, std::vector< std::vector< float> > &image) {
+
+        const double xInt = int(u), yInt = int(v);
+        const double xSub = u - xInt, ySub = v - yInt;
+
+        const double topLeft = (1.0 - xSub) * (1.0 - ySub);
+        const double topRight = xSub * (1.0 - ySub);
+        const double bottomLeft = (1.0 - xSub) * ySub;
+        const double bottomRight = xSub * ySub;
+
+
+        if (yInt < 0 || xInt < 0 || yInt + 1 > image.size() || xInt + 1 > image[0].size() )
+        {
+            return -1;
+        }
+
+        return topLeft * image[yInt][xInt] +
+               topRight * image[yInt][xInt + 1] +
+               bottomLeft * image[yInt + 1][xInt] +
+               bottomRight * image[yInt + 1][xInt + 1];
+    }
+
 
     void EdgeInverseDepthPatch::computeError() {
 //        std:: cout << "EdgeInverseDepthPatch::computeError()"<< std::endl;
@@ -55,9 +77,10 @@ namespace g2o {
         for (int i=0;i<neighbours.size();i++)
         {
             // Getting the patch value in anchor
-            int refU = pointInvD->u0 + neighbours[i].first;
-            int refV = pointInvD->v0 + neighbours[i].second;
-            double refValue = imgAnchor->image[refV][refU];
+            double refU = (pointInvD->u0 + neighbours[i].first) / pyramidScale;
+            double refV = (pointInvD->v0 + neighbours[i].second) / pyramidScale;
+
+            double refValue = getSubpixImageValue(refU, refV, imgAnchor->image);
 
             // Getting the projected point in obs
             Eigen::Vector3d pointInFirst;
@@ -81,31 +104,15 @@ namespace g2o {
             double obsU = projectedPoint[0] / pyramidScale;
             double obsV = projectedPoint[1] / pyramidScale;
 
-            // The obs value will not be integer
-            const double xInt = int(obsU), yInt = int(obsV);
-            const double xSub = obsU - xInt, ySub = obsV - yInt;
 
-            const double topLeft = (1.0 - xSub) * (1.0 - ySub);
-            const double topRight = xSub * (1.0 - ySub);
-            const double bottomLeft = (1.0 - xSub) * ySub;
-            const double bottomRight = xSub * ySub;
+            double obsValue = getSubpixImageValue(obsU, obsV, imgObs->image);
 
-
-            if (yInt < 0 || xInt < 0 || yInt + 1 > imgObs->image.size() || xInt + 1 > imgObs->image[0].size() )
-            {
-//                std::cout << "Outside patch: " << yInt << " " << xInt << "  PatchOffset: " << patchOffsetU << " " << patchOffsetV << std::endl;
-//                std::cout << "\t" << projectedPoint[0] << " " << _measurement[0] << " " << projectedPoint[1] << " " << _measurement[1] << std::endl;
-
+            // Either of values is outside of the image
+            if (refValue < 0 || obsValue < 0) {
                 for (int j=0;j<9;j++)
                     computedError(j,0) = 255;
                 break;
             }
-
-            double obsValue = topLeft * imgObs->image[yInt][xInt] +
-                              topRight * imgObs->image[yInt][xInt + 1] +
-                              bottomLeft * imgObs->image[yInt + 1][xInt] +
-                              bottomRight * imgObs->image[yInt + 1][xInt + 1];
-
 
             computedError(i,0) = refValue - obsValue;
 
@@ -115,6 +122,11 @@ namespace g2o {
 //                std::cout << "computedError(i,0) = " << refValue << " " << obsValue << std::endl;
 //            }
 //            std:: cout << "refValue = " << refValue << " obsValue: " << obsValue << std::endl;
+
+//             if (_vertices[1] == _vertices[2] && i == 0) {
+//                 std::cout << " ----- " << std::endl << "The same pose: " << refV << " " << refU << " vs " << obsV << " " << obsU << std::endl;
+//                 std::cout << "Values: " << refValue << " " << obsValue << std::endl;
+//             }
         }
 
         _error = computedError;

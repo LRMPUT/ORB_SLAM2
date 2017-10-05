@@ -85,8 +85,8 @@ void LocalMapping::Run()
                     if(mpMap->KeyFramesInMap()<10)
                         Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
                     else {
-                        Optimizer::LocalPhotometricBundleAdjustment(mpCurrentKeyFrame, &mbAbortBA, mpMap);
-                        exit(0);
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
+//                        exit(0);
                     }
                 }
 
@@ -175,6 +175,19 @@ void LocalMapping::ProcessNewKeyFrame()
 
     // Insert Keyframe in Map
     mpMap->AddKeyFrame(mpCurrentKeyFrame);
+
+    // Insert Keyframe for PBA and remove old KF if there are too much frames
+    pbaKeyFrames.push_back(mpCurrentKeyFrame);
+    if ( pbaKeyFrames.size() > 10 ) {
+        std::cout << "Removing oldKF to release memory" << std::endl;
+
+        KeyFrame* oldKF = pbaKeyFrames.front();
+        for (int i = 0; i < oldKF->imagePyramidLeft.size(); i++) {
+            delete oldKF->imagePyramidLeft[i];
+            delete oldKF->imagePyramidRight[i];
+        }
+        pbaKeyFrames.pop_front();
+    }
 }
 
 void LocalMapping::MapPointCulling()
