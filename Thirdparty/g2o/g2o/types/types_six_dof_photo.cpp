@@ -50,7 +50,7 @@ namespace g2o {
         const double bottomRight = xSub * ySub;
 
 
-        if (yInt < 0 || xInt < 0 || yInt + 1 > image.size() || xInt + 1 > image[0].size() )
+        if (yInt < 0 || xInt < 0 || yInt + 1 >= image.size() || xInt + 1 >= image[0].size() )
         {
             return -1;
         }
@@ -60,7 +60,6 @@ namespace g2o {
                bottomLeft * image[yInt + 1][xInt] +
                bottomRight * image[yInt + 1][xInt + 1];
     }
-
 
     void EdgeInverseDepthPatch::computeError() {
 //        std:: cout << "EdgeInverseDepthPatch::computeError()"<< std::endl;

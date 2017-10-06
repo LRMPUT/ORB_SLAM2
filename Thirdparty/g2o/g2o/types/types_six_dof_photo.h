@@ -64,7 +64,6 @@ namespace g2o {
         void computeError();
 //        virtual void linearizeOplus ();
 
-
         inline Eigen::Matrix<double, 1, 2> d_inten_d_proj(const double u, const double v) ;
         inline Matrix<double, 2, 3, Eigen::ColMajor> d_proj_d_y(const double &fx, const double &fy, const Vector3D &xyz);
         inline Matrix<double, 3, 6, Eigen::ColMajor> d_expy_d_y(const Vector3D &y);

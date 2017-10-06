@@ -841,12 +841,16 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
     firstKF->mnBALocalForKF = firstKF->mnId;
 
-    // TODO: FirstKF can be bad?
     for (auto it = lLocalKeyFrames.begin(); it!= lLocalKeyFrames.end();) {
-        if ((*it)->isBad())
+        (*it)->mnBALocalForKF = firstKF->mnId;
+        if ((*it)->isBad()) {
+            for (int i = 0; i < (*it)->imagePyramidLeft.size(); i++) {
+                delete (*it)->imagePyramidLeft[i];
+                delete (*it)->imagePyramidRight[i];
+            }
             it = lLocalKeyFrames.erase(it);
+        }
         else {
-            (*it)->mnBALocalForKF = firstKF->mnId;
             it++;
         }
     }
@@ -866,6 +870,16 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                         lLocalMapPoints.push_back(pMP);
                         pMP->mnBALocalForKF=firstKF->mnId;
                     }
+        }
+    }
+
+
+    for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++) {
+        MapPoint *pMP = *lit;
+        if (!pMP)
+        {
+            std::cout << "SERIOUSLY WRONG" << std::endl;
+            exit(0);
         }
     }
 
@@ -922,6 +936,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
         MapPoint *pMP = *lit;
+
+
         KeyFrame *refKF = pMP->GetReferenceKeyFrame();
 
         // Is first observation in local keyframes containing image and gradient
@@ -948,9 +964,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         optimizer.addVertex(vPoint);
 
         //Set edges
-        for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+        for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
         {
-            KeyFrame* pKFi = mit->first;
+            KeyFrame* pKFi = *lit;
+
+//        for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+//        {
+//            KeyFrame* pKFi = mit->first;
 
             // Let's check if observation keyframe is in the list
             bool found = (std::find(lLocalKeyFrames.begin(), lLocalKeyFrames.end(), pKFi) != lLocalKeyFrames.end());
@@ -960,7 +980,6 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             if(!pKFi->isBad())
             {
 
-
                 g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
 
                 double baseline = refKF->mbf / refKF->fx;
@@ -968,6 +987,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                 if (refKF == pKFi) {
                     e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], refKF->imagePyramidRight[optimizationPyramidIndex],
                                          baseline, optimizationPyramidScale);
+
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
                 }
@@ -977,6 +997,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                     // Left to anchor
                     e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidLeft[optimizationPyramidIndex],
                                              0, optimizationPyramidScale);
+
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
                     vpEdgeKFStereo.push_back(pKFi);
@@ -986,6 +1007,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                     g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
                     e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidRight[optimizationPyramidIndex],
                                              baseline, optimizationPyramidScale);
+
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
                 }
@@ -1002,24 +1024,23 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         if(*pbStopFlag)
             return;
 
-    std::cout << "Edges.size() : " << optimizer.edges().size() << " Vertices.size() : " <<optimizer.vertices().size() << std::endl ;
+    std::cout << "Edges.size() : " << optimizer.edges().size() << " Vertices.size() : " <<optimizer.vertices().size()
+              << " vpMapPoints.size() : " << vpMapPointEdgeStereo.size() << std::endl ;
 
     optimizer.initializeOptimization(0);
 
-    std::cout << "After initialize optimization" << std::endl;
+    // Remove huge outliers straight away - 3 times the huber norm
+    for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++) {
+        g2o::EdgeInverseDepthPatch *e = vpEdgesStereo[i];
+        MapPoint *pMP = vpMapPointEdgeStereo[i];
 
-    // Check inlier observations
-//    for(size_t i=0, iend=vpEdgesStereo.size(); i<iend;i++) {
-//        g2o::EdgeInverseDepthPatch *e = vpEdgesStereo[i];
-//        MapPoint *pMP = vpMapPointEdgeStereo[i];
-//
-//        if (pMP->isBad())
-//            continue;
-//
-//        if (e->chi2() > thHuberSquared || !e->isDepthPositive()) {
-//            e->setLevel(1);
-//        }
-//    }
+        if (pMP->isBad())
+            continue;
+
+        if (e->chi2() > thHuberSquared*3 || !e->isDepthPositive()) {
+            e->setLevel(1);
+        }
+    }
 
     std::cout << "Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
     optimizer.optimize(5);
