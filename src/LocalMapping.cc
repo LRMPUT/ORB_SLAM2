@@ -82,13 +82,13 @@ void LocalMapping::Run()
 
                 // Local BA on photometric error from stereo camera
                 if (!mbMonocular) {
-                    if(mpMap->KeyFramesInMap()>2)
-                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
+//                    if(mpMap->KeyFramesInMap()>2)
+//                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
 //                    else {
-//                    if(mpMap->KeyFramesInMap()>2) {
-//                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
-////                        exit(0);
-//                    }
+                    if(mpMap->KeyFramesInMap()>2) {
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
+//                        exit(0);
+                    }
                 }
 
                 // Check redundant local Keyframes
