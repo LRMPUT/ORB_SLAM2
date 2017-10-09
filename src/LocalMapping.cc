@@ -82,13 +82,13 @@ void LocalMapping::Run()
 
                 // Local BA on photometric error from stereo camera
                 if (!mbMonocular) {
-//                    if(mpMap->KeyFramesInMap()<10)
-//                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
+                    if(mpMap->KeyFramesInMap()>2)
+                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
 //                    else {
-                    if(mpMap->KeyFramesInMap()>2) {
-                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
-//                        exit(0);
-                    }
+//                    if(mpMap->KeyFramesInMap()>2) {
+//                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
+////                        exit(0);
+//                    }
                 }
 
                 // Check redundant local Keyframes
@@ -659,7 +659,14 @@ void LocalMapping::KeyFrameCulling()
     // A keyframe is considered redundant if the 90% of the MapPoints it sees, are seen
     // in at least other 3 keyframes (in the same or finer scale)
     // We only consider close stereo points
-    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
+    double redundantThreshold = 0.6;
+
+//    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
+    vector<KeyFrame*> vpLocalKeyFrames = pbaKeyFrames.front()->GetVectorCovisibleKeyFrames();
+
+    // Consider only keyframes that are not in the pba list
+    vpLocalKeyFrames.erase( remove_if( begin(vpLocalKeyFrames),end(vpLocalKeyFrames),
+                        [&](KeyFrame* x){return find(begin(pbaKeyFrames),end(pbaKeyFrames),x)!=end(pbaKeyFrames);}), end(vpLocalKeyFrames) );
 
     for(vector<KeyFrame*>::iterator vit=vpLocalKeyFrames.begin(), vend=vpLocalKeyFrames.end(); vit!=vend; vit++)
     {
@@ -714,7 +721,7 @@ void LocalMapping::KeyFrameCulling()
             }
         }  
 
-        if(nRedundantObservations>0.9*nMPs)
+        if(nRedundantObservations>redundantThreshold*nMPs)
             pKF->SetBadFlag();
     }
 }

@@ -456,6 +456,13 @@ void Tracking::Track()
             // Check if we need to insert a new keyframe
             if(NeedNewKeyFrame())
                 CreateNewKeyFrame();
+            else {
+                // If it is not a keyframe, than we need to clear the memory
+                for (int i = 0; i < mCurrentFrame.mpORBextractorLeft->photobaImagePyramid.size(); i++) {
+                    delete mCurrentFrame.mpORBextractorLeft->photobaImagePyramid[i];
+                    delete mCurrentFrame.mpORBextractorRight->photobaImagePyramid[i];
+                }
+            }
 
             // We allow points with high innovation (considererd outliers by the Huber Function)
             // pass to the new keyframe, so that bundle adjustment will finally decide

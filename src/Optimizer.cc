@@ -828,7 +828,7 @@ std::string Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &
 void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool* pbStopFlag, Map* pMap) {
     std::cout << "Optimizer::LocalPhotometricBundleAdjustment" << std::endl;
     int optimizationPyramidIndex = 0;
-    float optimizationPyramidScale = 1;
+    float optimizationPyramidScale = pow(1.2, optimizationPyramidIndex); // TODO: should take if from config file
 
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
