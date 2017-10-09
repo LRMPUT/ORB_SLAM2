@@ -76,8 +76,8 @@ namespace g2o {
         for (int i=0;i<neighbours.size();i++)
         {
             // Getting the patch value in anchor
-            double refU = (pointInvD->u0 + neighbours[i].first) / pyramidScale;
-            double refV = (pointInvD->v0 + neighbours[i].second) / pyramidScale;
+            double refU = pointInvD->u0 / pyramidScale + neighbours[i].first ;
+            double refV = pointInvD->v0 / pyramidScale + neighbours[i].second ;
 
             double refValue = getSubpixImageValue(refU, refV, imgAnchor->image);
 
