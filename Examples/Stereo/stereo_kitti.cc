@@ -37,7 +37,7 @@ void LoadImages(const string &strPathToSequence, vector<string> &vstrImageLeft,
 int main(int argc, char **argv)
 {
     // Slowing down the processing of the sequence
-    double playbackSpeed = 0.1;
+    double playbackSpeed = 0.05;
 
     if(argc != 4)
     {

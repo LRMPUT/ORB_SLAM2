@@ -22,6 +22,7 @@ namespace g2o {
     typedef Eigen::Matrix<double,9,1,Eigen::ColMajor> Vector9D;
 
     struct imgStr {
+        float imageScale;
         std::vector< std::vector< float> > image;
         std::vector< std::vector< Eigen::Vector2f > > gradient;
     };
@@ -50,14 +51,18 @@ namespace g2o {
             neighbours.push_back(make_pair(-1,1));
         }
 
-        void setAdditionalData(imgStr *imageAnchor,
-                               imgStr *imageObs,
-                               double _baseline, double _pyramidScale) {
+        void setAdditionalData(std::vector< imgStr *> &imageAnchor,
+                               std::vector< imgStr *> &imageObs,
+                               double _baseline) {
             imgAnchor = imageAnchor;
             imgObs = imageObs;
             baseline = _baseline;
-            pyramidScale = _pyramidScale;
         }
+
+        void selectPyramidIndex(int _pyramidIndex) {
+            pyramidIndex = _pyramidIndex;
+        }
+
 
         virtual bool read  (std::istream& is);
         virtual bool write (std::ostream& os) const;
@@ -91,9 +96,9 @@ namespace g2o {
         std::vector< std::pair<double, double> > neighbours;
 
         double baseline; // Stereo offset
-        double pyramidScale;
-        imgStr *imgAnchor;
-        imgStr *imgObs;
+        int pyramidIndex;
+        std::vector< imgStr *> imgAnchor;
+        std::vector< imgStr *> imgObs;
     };
 }
 #endif //ORB_SLAM2_TYPES_SIX_DOF_PHOTO_H

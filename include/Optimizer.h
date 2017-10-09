@@ -67,7 +67,7 @@ public:
 
 
     // Modification by Michal Nowicki
-    void static LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool *pbStopFlag, Map *pMap);
+    void static LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool *pbStopFlag, Map *pMap, int optimizationLvL, bool bDoMoreAtAll);
     static g2o::EdgeInverseDepthPatch* AddEdgeInverseDepthPatch(g2o::SparseOptimizer &optimizer, int featureId, KeyFrame* refKF, KeyFrame* curKF, double thHuber);
 
     static std::string ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges,  vector<MapPoint*> &vpMapPointEdgeStereo, double thHuberSquared);

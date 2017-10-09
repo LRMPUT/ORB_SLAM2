@@ -72,6 +72,8 @@ namespace g2o {
         double cx = cam->principle_point[0], cy = cam->principle_point[1];
         double fx = cam->focal_length_x, fy = cam->focal_length_y;
 
+        const float pyramidScale = imgAnchor[pyramidIndex]->imageScale;
+
         Matrix<double, 9, 1, Eigen::ColMajor> computedError;
         for (int i=0;i<neighbours.size();i++)
         {
@@ -79,7 +81,7 @@ namespace g2o {
             double refU = pointInvD->u0 / pyramidScale + neighbours[i].first ;
             double refV = pointInvD->v0 / pyramidScale + neighbours[i].second ;
 
-            double refValue = getSubpixImageValue(refU, refV, imgAnchor->image);
+            double refValue = getSubpixImageValue(refU, refV, imgAnchor[pyramidIndex]->image);
 
             // Getting the projected point in obs
             Eigen::Vector3d pointInFirst;
@@ -104,7 +106,7 @@ namespace g2o {
             double obsV = projectedPoint[1] / pyramidScale;
 
 
-            double obsValue = getSubpixImageValue(obsU, obsV, imgObs->image);
+            double obsValue = getSubpixImageValue(obsU, obsV, imgObs[pyramidIndex]->image);
 
             // Either of values is outside of the image
             if (refValue < 0 || obsValue < 0) {
@@ -145,10 +147,10 @@ namespace g2o {
 
         Eigen::Matrix<double, 1, 2> G;
         for (int i=0;i<2;i++) {
-            G(0,i) = topLeft * imgObs->gradient[xInt][yInt][i] +
-                     topRight * imgObs->gradient[xInt + 1][yInt][i] +
-                     bottomLeft * imgObs->gradient[xInt][yInt + 1][i] +
-                     bottomRight * imgObs->gradient[xInt + 1][yInt + 1][i];
+            G(0,i) = topLeft * imgObs[pyramidIndex]->gradient[xInt][yInt][i] +
+                     topRight * imgObs[pyramidIndex]->gradient[xInt + 1][yInt][i] +
+                     bottomLeft * imgObs[pyramidIndex]->gradient[xInt][yInt + 1][i] +
+                     bottomRight * imgObs[pyramidIndex]->gradient[xInt + 1][yInt + 1][i];
         }
         return G;
     };

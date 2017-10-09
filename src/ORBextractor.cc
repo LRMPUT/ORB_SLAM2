@@ -1167,6 +1167,7 @@ void ORBextractor::ComputePhotometricBAPyramid(cv::Mat image)
         int rows = floatPyramid[level].rows;
         int cols = floatPyramid[level].cols;
 
+        photobaImagePyramid[level]->imageScale = mvScaleFactor[level];
         photobaImagePyramid[level]->image = std::vector< std::vector<float> >(rows, std::vector<float>(cols));
         photobaImagePyramid[level]->gradient = std::vector< std::vector< Eigen::Vector2f> >(rows, std::vector< Eigen::Vector2f >(cols, Eigen::Vector2f::Zero()));
 

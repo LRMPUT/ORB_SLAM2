@@ -825,11 +825,8 @@ std::string Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &
     return "avg. chi2 : " + to_string(chi2Sum/chi2Count) + " over " + to_string(chi2Count) + " inliers" ;
 }
 
-void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool* pbStopFlag, Map* pMap) {
-    std::cout << "Optimizer::LocalPhotometricBundleAdjustment" << std::endl;
-    int optimizationPyramidIndex = 0;
-    float optimizationPyramidScale = pow(1.2, optimizationPyramidIndex); // TODO: should take if from config file
-
+void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool* pbStopFlag, Map* pMap, int optimizationLvL, bool bDoMoreAtAll) {
+    std::cout << "Optimizer::LocalPhotometricBundleAdjustment - lvl : " << optimizationLvL << std::endl;
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
 
@@ -856,7 +853,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     }
 
     // Local MapPoints seen in Local KeyFrames
-    list<MapPoint*> lLocalMapPoints;
+    set<MapPoint*> lLocalMapPoints;
     for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin() , lend=lLocalKeyFrames.end(); lit!=lend; lit++)
     {
         vector<MapPoint*> vpMPs = (*lit)->GetMapPointMatches();
@@ -865,21 +862,12 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             MapPoint* pMP = *vit;
             if(pMP)
                 if(!pMP->isBad())
-                    if(pMP->mnBALocalForKF!=firstKF->mnId)
-                    {
-                        lLocalMapPoints.push_back(pMP);
-                        pMP->mnBALocalForKF=firstKF->mnId;
-                    }
-        }
-    }
-
-
-    for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++) {
-        MapPoint *pMP = *lit;
-        if (!pMP)
-        {
-            std::cout << "SERIOUSLY WRONG" << std::endl;
-            exit(0);
+                    lLocalMapPoints.insert(pMP);
+//                    if(pMP->mnBALocalForKF!=firstKF->mnId)
+//                    {
+//                        lLocalMapPoints.push_back(pMP);
+//                        pMP->mnBALocalForKF=firstKF->mnId;
+//                    }
         }
     }
 
@@ -933,7 +921,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     vector<MapPoint*> vpMapPointEdgeStereo;
     vpMapPointEdgeStereo.reserve(nExpectedSize);
 
-    for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
+    for(auto lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
         MapPoint *pMP = *lit;
 
@@ -981,12 +969,12 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             {
 
                 g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+                e->selectPyramidIndex(optimizationLvL);
 
                 double baseline = refKF->mbf / refKF->fx;
                 // It is the same pose, so it is the left-right stereo constraint
                 if (refKF == pKFi) {
-                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], refKF->imagePyramidRight[optimizationPyramidIndex],
-                                         baseline, optimizationPyramidScale);
+                    e->setAdditionalData(refKF->imagePyramidLeft, refKF->imagePyramidRight, baseline);
 
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
@@ -995,8 +983,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                     // Other pose so left to anchor and right to anchor
 
                     // Left to anchor
-                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidLeft[optimizationPyramidIndex],
-                                             0, optimizationPyramidScale);
+                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0);
 
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
@@ -1005,8 +992,9 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
                     // Right to anchor
                     g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
-                    e->setAdditionalData(refKF->imagePyramidLeft[optimizationPyramidIndex], pKFi->imagePyramidRight[optimizationPyramidIndex],
-                                             baseline, optimizationPyramidScale);
+                    e->selectPyramidIndex(optimizationLvL);
+                    
+                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
 
                     optimizer.addEdge(e);
                     vpEdgesStereo.push_back(e);
@@ -1042,16 +1030,27 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         }
     }
 
-    std::cout << "Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
+    std::cout << "LvL " << optimizationLvL << " Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
     optimizer.optimize(5);
-    std::cout << "After " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
+    std::cout << "LvL " << optimizationLvL << " After " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
 
-    bool bDoMore= true;
+//    for (auto &e : vpEdgesStereo)
+//        e->selectPyramidIndex(0);
+//
+//    optimizer.initializeOptimization(0);
+//
+//    std::cout << "LvL 0: Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
+//    optimizer.optimize(5);
+//    std::cout << "LvL 0: After " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
+
+
+    bool bDoMore= bDoMoreAtAll;
 
     if(pbStopFlag)
         if(*pbStopFlag)
             bDoMore = false;
 
+    std::cout << "bDoMore: " << bDoMore << std::endl;
     if(bDoMore)
     {
         int inlierCount = 0;
@@ -1073,7 +1072,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             e->setRobustKernel(0);
         }
 
-        std::cout << "Inlier count: " << inlierCount << std::endl;
+//        std::cout << "Inlier count: " << inlierCount << std::endl;
         // Optimize again without the outliers
 
         optimizer.initializeOptimization(0);
@@ -1113,7 +1112,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     }
 
     // Recover optimized data
-    std::cout << "Recover optimized data" << std::endl;
+//    std::cout << "Recover optimized data" << std::endl;
 
     //Keyframes
     for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
@@ -1124,10 +1123,10 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         pKF->SetPose(Converter::toCvMat(SE3quat));
     }
 
-    std::cout << "Recover points" << std::endl;
+//    std::cout << "Recover points" << std::endl;
 
     //Points
-    for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
+    for(auto lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
         MapPoint *pMP = *lit;
 
@@ -1156,7 +1155,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 //        if(!refKF)
 //            std::cout << "Something wrong with refKF " << std::endl;
     }
-    std::cout << "Optimizer::LocalPhotometricBundleAdjustment -- END" << std::endl;
+//    std::cout << "Optimizer::LocalPhotometricBundleAdjustment -- END" << std::endl;
+//    std::cout << "-- -- -- -- -- -- " << std::endl;
 }
 
 

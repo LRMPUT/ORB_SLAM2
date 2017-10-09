@@ -576,7 +576,9 @@ void LoopClosing::CorrectLoop()
     mbRunningGBA = true;
     mbFinishedGBA = false;
     mbStopGBA = false;
-    mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment,this,mpCurrentKF->mnId);
+
+    // TODO: Turn off GBA as it destroys photometric gains
+//    mpThreadGBA = new thread(&LoopClosing::RunGlobalBundleAdjustment,this,mpCurrentKF->mnId);
 
     // Loop closed. Release Local Mapping.
     mpLocalMapper->Release();    

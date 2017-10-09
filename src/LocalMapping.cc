@@ -86,7 +86,11 @@ void LocalMapping::Run()
 //                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
 //                    else {
                     if(mpMap->KeyFramesInMap()>2) {
-                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap);
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 7, false);
+                        mbAbortBA = false;
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 4, false);
+                        mbAbortBA = false;
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 0, false);
 //                        exit(0);
                     }
                 }
@@ -187,6 +191,8 @@ void LocalMapping::ProcessNewKeyFrame()
             delete oldKF->imagePyramidLeft[i];
             delete oldKF->imagePyramidRight[i];
         }
+        if (pbaKeyFrames.front()->mnId%3 != 0)
+            pbaKeyFrames.front()->SetBadFlag();
         pbaKeyFrames.pop_front();
     }
 }
@@ -659,7 +665,7 @@ void LocalMapping::KeyFrameCulling()
     // A keyframe is considered redundant if the 90% of the MapPoints it sees, are seen
     // in at least other 3 keyframes (in the same or finer scale)
     // We only consider close stereo points
-    double redundantThreshold = 0.6;
+    double redundantThreshold = 0.9;
 
 //    vector<KeyFrame*> vpLocalKeyFrames = mpCurrentKeyFrame->GetVectorCovisibleKeyFrames();
     vector<KeyFrame*> vpLocalKeyFrames = pbaKeyFrames.front()->GetVectorCovisibleKeyFrames();
