@@ -830,7 +830,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
 
-    const int blockSolverCameras = 6;
+    const int blockSolverCameras = 10;
     const int blockSolverPoses = 1;
 
 
@@ -899,8 +899,15 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
     {
         KeyFrame* pKFi = *lit;
-        g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
-        vSE3->setEstimate(Converter::toSE3Quat(pKFi->GetPose()));
+        g2o::VertexSE3ExpmapBright * vSE3 = new g2o::VertexSE3ExpmapBright();
+        g2o::SE3QuatBright estimate;
+        estimate.se3quat = Converter::toSE3Quat(pKFi->GetPose());
+        estimate.aL = pKFi->affineAL;
+        estimate.bL = pKFi->affineBL;
+        estimate.aR = pKFi->affineAR;
+        estimate.bR = pKFi->affineBR;
+
+        vSE3->setEstimate(estimate);
         vSE3->setId(pKFi->mnId);
         vSE3->setFixed(pKFi->mnId==firstKF->mnId);
         optimizer.addVertex(vSE3);
@@ -955,10 +962,6 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
         {
             KeyFrame* pKFi = *lit;
-
-//        for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
-//        {
-//            KeyFrame* pKFi = mit->first;
 
             // Let's check if observation keyframe is in the list
             bool found = (std::find(lLocalKeyFrames.begin(), lLocalKeyFrames.end(), pKFi) != lLocalKeyFrames.end());
@@ -1118,9 +1121,16 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
     {
         KeyFrame* pKF = *lit;
-        g2o::VertexSE3Expmap* vSE3 = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(pKF->mnId));
-        g2o::SE3Quat SE3quat = vSE3->estimate();
+        g2o::VertexSE3ExpmapBright* vSE3 = static_cast<g2o::VertexSE3ExpmapBright*>(optimizer.vertex(pKF->mnId));
+
+        g2o::SE3QuatBright est = vSE3->estimate();
+        g2o::SE3Quat SE3quat = est.se3quat;
+
         pKF->SetPose(Converter::toCvMat(SE3quat));
+        pKF->affineAL = est.aL;
+        pKF->affineBL = est.bL;
+        pKF->affineAR = est.aR;
+        pKF->affineBR = est.bR;
     }
 
 //    std::cout << "Recover points" << std::endl;

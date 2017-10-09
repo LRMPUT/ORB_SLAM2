@@ -57,6 +57,22 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     imagePyramidLeft = F.mpORBextractorLeft->photobaImagePyramid;
     if (F.mpORBextractorRight)
         imagePyramidRight = F.mpORBextractorRight->photobaImagePyramid;
+
+
+    // The initial values from the ref KF
+    if (static_cast<KeyFrame*>(F.mpReferenceKF) != NULL) {
+        affineAL = F.mpReferenceKF->affineAL;
+        affineBL = F.mpReferenceKF->affineBL;
+        affineAR = F.mpReferenceKF->affineAR;
+        affineBR = F.mpReferenceKF->affineBR;
+    }
+    else
+    {
+        affineAL = 0;
+        affineAR = 0;
+        affineBL = 0;
+        affineBR = 0;
+    }
 }
 
 void KeyFrame::ComputeBoW()

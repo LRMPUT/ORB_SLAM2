@@ -9,6 +9,7 @@
 #include "../core/base_binary_edge.h"
 #include "../core/base_unary_edge.h"
 #include "../core/base_multi_edge.h"
+#include "../types/vertexSE3ExpmapBright.h"
 #include "../types/types_six_dof_expmap.h"
 #include "se3_ops.h"
 #include "se3quat.h"

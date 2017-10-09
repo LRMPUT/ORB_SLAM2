@@ -94,6 +94,8 @@ g2o/types/types_sba.cpp
 g2o/types/types_six_dof_expmap.cpp
 g2o/types/types_seven_dof_expmap.cpp
 g2o/types/types_seven_dof_expmap.h
+g2o/types/vertexSE3ExpmapBright.cpp
+g2o/types/vertexSE3ExpmapBright.h
 g2o/types/types_six_dof_photo.cpp
 g2o/types/types_six_dof_photo.h
 g2o/types/se3quat.h

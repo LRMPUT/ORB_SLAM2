@@ -194,6 +194,9 @@ public:
     std::vector< g2o::imgStr* > imagePyramidLeft;
     std::vector< g2o::imgStr* > imagePyramidRight;
 
+    // Affine
+    double affineAL, affineAR, affineBL, affineBR;
+
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:

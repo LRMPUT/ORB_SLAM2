@@ -37,7 +37,7 @@ void LoadImages(const string &strPathToSequence, vector<string> &vstrImageLeft,
 int main(int argc, char **argv)
 {
     // Slowing down the processing of the sequence
-    double playbackSpeed = 0.05;
+    double playbackSpeed = 0.1;
 
     if(argc != 4)
     {
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
     const int nImages = vstrImageLeft.size();
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,false);
+    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,true);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;

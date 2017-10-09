@@ -62,12 +62,14 @@ namespace g2o {
     }
 
     void EdgeInverseDepthPatch::computeError() {
-//        std:: cout << "EdgeInverseDepthPatch::computeError()"<< std::endl;
 
         const VertexSBAPointInvD *pointInvD = static_cast<const VertexSBAPointInvD *>(_vertices[0]);
-        const VertexSE3Expmap *T_p_from_world = static_cast<const VertexSE3Expmap *>(_vertices[1]);
-        const VertexSE3Expmap *T_anchor_from_world = static_cast<const VertexSE3Expmap *>(_vertices[2]);
+        const VertexSE3ExpmapBright *T_p_from_world = static_cast<const VertexSE3ExpmapBright *>(_vertices[1]);
+        const VertexSE3ExpmapBright *T_anchor_from_world = static_cast<const VertexSE3ExpmapBright *>(_vertices[2]);
         const CameraParameters *cam = static_cast<const CameraParameters *>(parameter(0));
+
+        SE3QuatBright T_p_est = T_p_from_world->estimate();
+        SE3QuatBright T_anchor_est = T_anchor_from_world->estimate();
 
         double cx = cam->principle_point[0], cy = cam->principle_point[1];
         double fx = cam->focal_length_x, fy = cam->focal_length_y;
@@ -90,10 +92,10 @@ namespace g2o {
             pointInFirst[1] = (pointInvD->v0 - cy + neighbours[i].second * pyramidScale) * pointInFirst[2] / fy;
 
             // XYZ point in global
-            Eigen::Vector3d pointInGlobal = T_anchor_from_world->estimate().inverse().map(pointInFirst);
+            Eigen::Vector3d pointInGlobal = T_anchor_est.se3quat.inverse().map(pointInFirst);
 
             // XYZ point in observation
-            Eigen::Vector3d pointInObs = T_p_from_world->estimate().map(pointInGlobal);
+            Eigen::Vector3d pointInObs = T_p_est.se3quat.map(pointInGlobal);
 
             // Possible movement to the right camera
             pointInObs[0] = pointInObs[0] - baseline;
@@ -115,7 +117,14 @@ namespace g2o {
                 break;
             }
 
-            computedError(i,0) = refValue - obsValue;
+//            computedError(i,0) = refValue  - obsValue;
+
+            // Anchor left vs obs left
+            if ( baseline < 0.0000001)
+                computedError(i,0) = exp(T_p_est.aL) / exp(T_anchor_est.aL)  * (refValue - T_anchor_est.bL) - (obsValue - T_p_est.bL);
+            // Anchor left vs anchor/obs right
+            else
+                computedError(i,0) = exp(T_p_est.aR) / exp(T_anchor_est.aL)  * (refValue - T_anchor_est.bL) - (obsValue - T_p_est.bR);
 
 //            if (refValue - obsValue > 10) {
 //                std::cout << "Projected and measured: (" << _measurement[0] << ", " << _measurement[1] << ") vs ("
@@ -257,9 +266,12 @@ namespace g2o {
     bool EdgeInverseDepthPatch::isDepthPositive() {
 
         const VertexSBAPointInvD *pointInvD = static_cast<const VertexSBAPointInvD *>(_vertices[0]);
-        const VertexSE3Expmap *T_p_from_world = static_cast<const VertexSE3Expmap *>(_vertices[1]);
-        const VertexSE3Expmap *T_anchor_from_world = static_cast<const VertexSE3Expmap *>(_vertices[2]);
+        const VertexSE3ExpmapBright *T_p_from_world = static_cast<const VertexSE3ExpmapBright *>(_vertices[1]);
+        const VertexSE3ExpmapBright *T_anchor_from_world = static_cast<const VertexSE3ExpmapBright *>(_vertices[2]);
         const CameraParameters *cam = static_cast<const CameraParameters *>(parameter(0));
+
+        SE3QuatBright T_p_est = T_p_from_world->estimate();
+        SE3QuatBright T_anchor_est = T_anchor_from_world->estimate();
 
         double cx = cam->principle_point[0], cy = cam->principle_point[1];
         double fx = cam->focal_length_x, fy = cam->focal_length_y;
@@ -272,8 +284,8 @@ namespace g2o {
         pointInAnchor[0] = (pointInvD->u0 - cx) * pointInAnchor[2] / fx;
         pointInAnchor[1] = (pointInvD->v0 - cy) * pointInAnchor[2] / fy;
 
-        Eigen::Vector3d pointInGlobal = T_anchor_from_world->estimate().inverse().map(pointInAnchor);
-        Eigen::Vector3d pointInObs = T_p_from_world->estimate().map(pointInGlobal);
+        Eigen::Vector3d pointInGlobal = T_anchor_est.se3quat.inverse().map(pointInAnchor);
+        Eigen::Vector3d pointInObs = T_p_est.se3quat.map(pointInGlobal);
 
         return pointInAnchor(2) > 0.0 && pointInObs(2) > 0.0;
     }
