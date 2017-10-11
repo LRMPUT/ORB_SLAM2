@@ -1178,9 +1178,9 @@ void ORBextractor::ComputePhotometricBAPyramid(cv::Mat image)
         for (int y = 1; y < rows - 1; y++)
             for (int x = 1; x < cols - 1; x++) {
                 photobaImagePyramid[level]->gradient[y][x][0] =
-                        0.5 * (floatPyramid[level].at<float>(y + 1, x) - floatPyramid[level].at<float>(y - 1, x));
+                        0.5 * (floatPyramid[level].at<float>(y, x + 1) - floatPyramid[level].at<float>(y, x - 1));
                 photobaImagePyramid[level]->gradient[y][x][1] =
-                        0.5 * (floatPyramid[level].at<float>(y, x+1) - floatPyramid[level].at<float>(y, x-1));
+                        0.5 * (floatPyramid[level].at<float>(y + 1, x) - floatPyramid[level].at<float>(y - 1, x));
             }
     }
 

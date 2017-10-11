@@ -78,10 +78,18 @@ namespace g2o {
       return res;
     }
 
+    Vector2D CameraParameters::mostcam_map(const Vector3D &trans_xyz, const double base) const {
+
+      Vector2D res;
+      res[0] = (trans_xyz[0] - base) / trans_xyz[2] * focal_length_x + principle_point[0];
+      res[1] = (trans_xyz[1]) / trans_xyz[2] * focal_length_y + principle_point[1];
+      return res;
+    }
+
     Vector3D CameraParameters::stereocam_uvu_map(const Vector3D &trans_xyz) const {
       Vector2D uv_left = cam_map(trans_xyz);
       double proj_x_right = (trans_xyz[0] - baseline) / trans_xyz[2];
-      double u_right = proj_x_right * focal_length_x + principle_point[0]; //TODO: only one focal_length?
+      double u_right = proj_x_right * focal_length_x + principle_point[0];
       return Vector3D(uv_left[0], uv_left[1], u_right);
     }
 

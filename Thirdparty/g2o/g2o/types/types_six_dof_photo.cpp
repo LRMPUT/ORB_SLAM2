@@ -97,11 +97,8 @@ namespace g2o {
             // XYZ point in observation
             Eigen::Vector3d pointInObs = T_p_est.se3quat.map(pointInGlobal);
 
-            // Possible movement to the right camera
-            pointInObs[0] = pointInObs[0] - baseline;
-
             // Projected point in observation
-            Vector2d projectedPoint = cam->cam_map(pointInObs);
+            Vector2d projectedPoint = cam->mostcam_map(pointInObs, baseline);
 
             // Find where the projected point is on selected pyramid lvl
             double obsU = projectedPoint[0] / pyramidScale;
@@ -153,22 +150,34 @@ namespace g2o {
         const double bottomLeft = (1.0 - xSub) * ySub;
         const double bottomRight = xSub * ySub;
 
-
         Eigen::Matrix<double, 1, 2> G;
-        for (int i=0;i<2;i++) {
-            G(0,i) = topLeft * imgObs[pyramidIndex]->gradient[xInt][yInt][i] +
-                     topRight * imgObs[pyramidIndex]->gradient[xInt + 1][yInt][i] +
-                     bottomLeft * imgObs[pyramidIndex]->gradient[xInt][yInt + 1][i] +
-                     bottomRight * imgObs[pyramidIndex]->gradient[xInt + 1][yInt + 1][i];
+        G.setZero();
+
+        if (yInt < 0 || xInt < 0 || yInt + 1 >= imgObs[pyramidIndex]->gradient.size()
+            || xInt + 1 >= imgObs[pyramidIndex]->gradient[0].size() )
+        {
+            return G;
         }
+
+        for (int i=0;i<2;i++) {
+            G(0,i) = topLeft * imgObs[pyramidIndex]->gradient[yInt][xInt][i] +
+                     topRight * imgObs[pyramidIndex]->gradient[yInt + 1][xInt][i] +
+                     bottomLeft * imgObs[pyramidIndex]->gradient[yInt][xInt + 1][i] +
+                     bottomRight * imgObs[pyramidIndex]->gradient[yInt + 1][xInt + 1][i];
+        }
+
+//        std::cout << "Gradient test X: " << G(0,0) << " " << getSubpixImageValue(obsU-1, obsV, imgObs[pyramidIndex]->image)
+//                  << " " << getSubpixImageValue(obsU+1, obsV, imgObs[pyramidIndex]->image) << std::endl;
+//        std::cout << "Gradient test Y: " << G(0,1) << " " << getSubpixImageValue(obsU, obsV-1, imgObs[pyramidIndex]->image)
+//                  << " " << getSubpixImageValue(obsU, obsV+1, imgObs[pyramidIndex]->image) << std::endl;
         return G;
     };
 
     inline Matrix<double, 2, 3, Eigen::ColMajor>
-    EdgeInverseDepthPatch::d_proj_d_y(const double &fx, const double &fy, const Vector3D &xyz) {
+    EdgeInverseDepthPatch::d_proj_d_y(const double &fx, const double &fy, const Vector3D &xyz, const double &baseline) {
         double z_sq = xyz[2] * xyz[2];
         Matrix<double, 2, 3, Eigen::ColMajor> J;
-        J << fx / xyz[2], 0, -(fx * xyz[0]) / z_sq,
+        J << fx / xyz[2], 0, -(fx * (xyz[0]-baseline)) / z_sq,
                 0, fy / xyz[2], -(fy * xyz[1]) / z_sq;
         return J;
     }
@@ -191,77 +200,128 @@ namespace g2o {
         return J;
     }
 
-//    void EdgeInverseDepthPatch::linearizeOplus() {
-//
-//        // Estiamted values
-//        VertexSBAPointInvD *pointInvD = static_cast<VertexSBAPointInvD *>(_vertices[0]);
-//        VertexSE3Expmap *vpose = static_cast<VertexSE3Expmap *>(_vertices[1]);
-//        VertexSE3Expmap *vanchor = static_cast<VertexSE3Expmap *>(_vertices[2]);
-//
-//        // Camera parameters
-//        const CameraParameters *cam
-//                = static_cast<const CameraParameters *>(parameter(0));
-//        double cx = cam->principle_point[0], cy = cam->principle_point[1];
-//        double fx = cam->focal_length_x, fy = cam->focal_length_y;
-//
-//
-//        // Empty jacobians
-//        _jacobianOplus[0] = Matrix<double, 9, 1, Eigen::ColMajor>();
-//        _jacobianOplus[1] = Matrix<double, 9, 6, Eigen::ColMajor>();
-//        _jacobianOplus[2] = Matrix<double, 9, 6, Eigen::ColMajor>();
-//
-//
-//        // Getting current pose estimate
-//        SE3Quat T_cw = vpose->estimate();
-//
-//        // Getting the anchor pose estimate
-//        SE3Quat T_aw = vanchor->estimate();
-//
-//        // From anchor to current
-//        SE3Quat T_ca = T_cw * T_aw.inverse();
-//
-//        // For all points in neighbourhood
-//        for (int i=0;i<9;i++) {
-//
-//            // Getting the projected point in obs
-//            Eigen::Vector3d pointInFirst;
-//            pointInFirst[2] = 1. / pointInvD->estimate();
-//            pointInFirst[0] = (pointInvD->u0 - cx + neighbours[i].first * pointAnchorScale) * pointInFirst[2] / fx;
-//            pointInFirst[1] = (pointInvD->v0 - cy + neighbours[i].second * pointAnchorScale) * pointInFirst[2] / fy;
-//
-//            // Global point position
-//            Eigen::Vector3d pointInGlobal = T_aw.inverse().map(pointInFirst);
-//
-//            // 3D point in obs
-//            Vector3D pointInObs = T_cw.map(pointInGlobal);
-//
-//            // 2D projected point in anchor
-//            Vector2d projectedPoint = cam->cam_map(pointInObs);
-//
-//            // Point in anchor in inverse depth parametrization
-//            Vector3D psi_a = invert_depth(pointInFirst);
-//
-//            // Jacobian of camera
-//            Matrix<double, 2, 3, Eigen::ColMajor> Jcam
-//                    = d_proj_d_y(cam->focal_length_x, cam->focal_length_y, pointInObs);
-//
-//            // Find where the projected point is on stored patch
-//            double patchOffsetU = (projectedPoint[0] - _measurement[0]) / pointObsScale;
-//            double patchOffsetV = (projectedPoint[1] - _measurement[1]) / pointObsScale;
-//
-//            // Observation on current frame in largePatch CS
-//            double obsU = largePatchCenter + patchOffsetU;
-//            double obsV = largePatchCenter + patchOffsetV;
-//
-//            // Image gradient
-//            Matrix<double, 1, 2> Ji = d_inten_d_proj(obsU, obsV);
-//
-//            // Jacobians of point, observation pose and anchor pose
-//            _jacobianOplus[0].row(i) = - Ji * Jcam * d_Tinvpsi_d_psi(T_ca, psi_a);
-//            _jacobianOplus[1].row(i) = - Ji * Jcam * d_expy_d_y(pointInObs);
-//            _jacobianOplus[2].row(i) = Ji * Jcam * T_ca.rotation().toRotationMatrix() * d_expy_d_y(pointInFirst);
-//        }
-//    }
+    void EdgeInverseDepthPatch::linearizeOplus() {
+
+        // Estimated values
+        VertexSBAPointInvD *pointInvD = static_cast<VertexSBAPointInvD *>(_vertices[0]);
+        VertexSE3ExpmapBright *vobsBright = static_cast<VertexSE3ExpmapBright *>(_vertices[1]);
+        VertexSE3ExpmapBright *vanchorBright = static_cast<VertexSE3ExpmapBright *>(_vertices[2]);
+
+        SE3QuatBright vobs = vobsBright->estimate();
+        SE3QuatBright vanchor = vanchorBright->estimate();
+
+        // Camera parameters
+        const CameraParameters *cam
+                = static_cast<const CameraParameters *>(parameter(0));
+        double cx = cam->principle_point[0], cy = cam->principle_point[1];
+        double fx = cam->focal_length_x, fy = cam->focal_length_y;
+
+
+        // Empty jacobians - // TODO: Maybe only setZero is needed?
+        _jacobianOplus[0] = Matrix<double, 9, 1, Eigen::ColMajor>();
+        _jacobianOplus[1] = Matrix<double, 9, 10, Eigen::ColMajor>();
+        _jacobianOplus[2] = Matrix<double, 9, 10, Eigen::ColMajor>();
+
+        _jacobianOplus[0].setZero();
+        _jacobianOplus[1].setZero();
+        _jacobianOplus[2].setZero();
+
+        // Getting current pose estimate
+        SE3Quat T_cw = vobs.se3quat;
+
+        // Getting the anchor pose estimate
+        SE3Quat T_aw = vanchor.se3quat;
+
+        // From anchor to current
+        SE3Quat T_ca = T_cw * T_aw.inverse();
+
+        const float pyramidScale = imgAnchor[pyramidIndex]->imageScale;
+
+        // For all points in neighbourhood
+        for (int i=0;i<9;i++) {
+
+            // Getting the patch value in anchor
+            double refU = pointInvD->u0 / pyramidScale + neighbours[i].first ;
+            double refV = pointInvD->v0 / pyramidScale + neighbours[i].second ;
+
+            double refValue = getSubpixImageValue(refU, refV, imgAnchor[pyramidIndex]->image);
+
+            // Getting the projected point in obs
+            Eigen::Vector3d pointInFirst;
+            pointInFirst[2] = 1. / pointInvD->estimate();
+            pointInFirst[0] = (pointInvD->u0 - cx + neighbours[i].first * pyramidScale) * pointInFirst[2] / fx;
+            pointInFirst[1] = (pointInvD->v0 - cy + neighbours[i].second * pyramidScale) * pointInFirst[2] / fy;
+
+            // Point in anchor in inverse depth parametrization
+            Vector3D psi_a = invert_depth(pointInFirst);
+
+            // Global point position
+            Eigen::Vector3d pointInGlobal = T_aw.inverse().map(pointInFirst);
+
+            // 3D point in obs
+            Vector3D pointInObs = T_cw.map(pointInGlobal);
+
+            // 2D projected point in observation
+            Vector2d projectedPoint = cam->mostcam_map(pointInObs, baseline);
+
+            // Find where the projected point is on selected pyramid lvl
+            double obsU = projectedPoint[0] / pyramidScale;
+            double obsV = projectedPoint[1] / pyramidScale;
+
+            double obsValue = getSubpixImageValue(obsU, obsV, imgObs[pyramidIndex]->image);
+
+            // Jacobian of camera
+            Matrix<double, 2, 3, Eigen::ColMajor> Jcam
+                    = d_proj_d_y(cam->focal_length_x/pyramidScale, cam->focal_length_y/pyramidScale, pointInObs, baseline);
+
+            // Image gradient
+            Matrix<double, 1, 2> Ji = d_inten_d_proj(obsU, obsV);
+
+            // Jacobians of point, observation pose and anchor pose
+            _jacobianOplus[0].row(i) = - Ji * Jcam * d_Tinvpsi_d_psi(T_ca, psi_a);
+
+
+            // Different cases of the Jacobian of the local image
+            double aObs = 0;
+            double refValueMinusB = refValue - vanchor.bL;
+
+            // 1) Stereo observation
+            if (_vertices[1] == _vertices[2]) {
+                aObs = vanchor.aR;
+
+                _jacobianOplus[2](i,8) =  exp (aObs) / exp(vanchor.aL) * refValueMinusB;
+                _jacobianOplus[2](i,9) =  1;
+
+                _jacobianOplus[1] = _jacobianOplus[2];
+            }
+            else {
+                _jacobianOplus[1].block<1,6>(i,0) = - Ji * Jcam * d_expy_d_y(pointInObs);
+
+                // 2) left anchor vs left local
+                if (baseline < 0.00001) {
+                    aObs = vobs.aL;
+
+                    _jacobianOplus[1](i, 6) = exp(aObs) / exp(vanchor.aL) * refValueMinusB;
+                    _jacobianOplus[1](i, 7) = 1;
+
+
+                }
+                // 3) left anchor vs right local
+                else {
+                    aObs = vobs.aR;
+
+                    _jacobianOplus[1](i, 8) = exp(aObs) / exp(vanchor.aL) * refValueMinusB;
+                    _jacobianOplus[1](i, 9) = 1;
+                }
+            }
+
+            // Jacobian w.r.t. the anchor pose left image
+            _jacobianOplus[2].block<1,6>(i,0) = Ji * Jcam * T_ca.rotation().toRotationMatrix() * d_expy_d_y(pointInFirst);
+
+            _jacobianOplus[2](i,6) = - exp(aObs) / exp(vanchor.aL) * refValueMinusB;
+            _jacobianOplus[2](i,7) = - exp(aObs) / exp(vanchor.aL);
+        }
+    }
 
     bool EdgeInverseDepthPatch::isDepthPositive() {
 

@@ -77,6 +77,8 @@ namespace g2o {
 
         Vector2D cam_map(const Vector3D &trans_xyz) const;
 
+        Vector2D mostcam_map(const Vector3D &trans_xyz, const double base) const;
+
         Vector3D stereocam_uvu_map(const Vector3D &trans_xyz) const;
 
         virtual bool read(std::istream &is) {

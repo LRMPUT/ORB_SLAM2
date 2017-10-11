@@ -996,7 +996,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
                     // Right to anchor
                     g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
                     e->selectPyramidIndex(optimizationLvL);
-                    
+
                     e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
 
                     optimizer.addEdge(e);
@@ -1079,8 +1079,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         // Optimize again without the outliers
 
         optimizer.initializeOptimization(0);
-        optimizer.optimize(10);
+//        optimizer.optimize(10);
 
+        for (int i=0;i<10;i++) {
+            optimizer.optimize(1);
+            std::cout << "LvL " << optimizationLvL << " After 2nd " << i << " "
+                      << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
+        }
     }
 
     vector<pair<KeyFrame*,MapPoint*> > vToErase;
@@ -1131,6 +1136,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         pKF->affineBL = est.bL;
         pKF->affineAR = est.aR;
         pKF->affineBR = est.bR;
+
+//        std::cout << "KF : " << pKF->mnId << " " << est.aL << " " << est.bL << " " << est.aR << " " << est.bR << std::endl;
     }
 
 //    std::cout << "Recover points" << std::endl;
