@@ -117,6 +117,17 @@ cv::Mat FrameDrawer::DrawFrame()
                 }
             }
         }
+
+        for (auto &p : mvHighGradientPoints) {
+            cv::Point2f pt1,pt2;
+            pt1.x=p.pt.x-r;
+            pt1.y=p.pt.y-r;
+            pt2.x=p.pt.x+r;
+            pt2.y=p.pt.y+r;
+
+            cv::rectangle(im,pt1,pt2,cv::Scalar(0,0,255));
+            cv::circle(im,p.pt,2,cv::Scalar(0,0,255),-1);
+        }
     }
 
     cv::Mat imWithInfo;
@@ -174,6 +185,7 @@ void FrameDrawer::Update(Tracking *pTracker)
     mvbMap = vector<bool>(N,false);
     mbOnlyTracking = pTracker->mbOnlyTracking;
 
+    mvHighGradientPoints = pTracker->mCurrentFrame.mvHighGradientPoints;
 
     if(pTracker->mLastProcessedState==Tracking::NOT_INITIALIZED)
     {

@@ -89,6 +89,12 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
     ComputeStereoMatches();
 
+    // TODO: TEST visualization
+    mvHighGradientPoints.push_back(cv::KeyPoint(10, 10, 0));
+
+    // TODO: Compute the 3D positions of those points
+    //
+
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
     mvbOutlier = vector<bool>(N,false);
 

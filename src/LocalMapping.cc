@@ -86,10 +86,10 @@ void LocalMapping::Run()
 //                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
 //                    else {
                     if(mpMap->KeyFramesInMap()>2) {
-//                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 7, false);
-//                        mbAbortBA = false;
-//                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 4, false);
-//                        mbAbortBA = false;
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 7, false);
+                        mbAbortBA = false;
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 4, false);
+                        mbAbortBA = false;
                         Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 0, true);
 //                        exit(0);
                     }

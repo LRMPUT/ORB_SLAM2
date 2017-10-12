@@ -1108,7 +1108,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     // Get Map Mutex
     unique_lock<mutex> lock(pMap->mMutexMapUpdate);
 
-    if(!vToErase.empty())
+    if(!vToErase.empty() && bDoMoreAtAll)
     {
         for(size_t i=0;i<vToErase.size();i++)
         {
