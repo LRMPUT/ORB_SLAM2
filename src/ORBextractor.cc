@@ -61,6 +61,7 @@
 #include <vector>
 
 #include "ORBextractor.h"
+#include "cornerEdgeHarris.h"
 
 
 using namespace cv;
@@ -762,9 +763,10 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
     return vResultKeys;
 }
 
-void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoints)
+void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoints, vector<vector<KeyPoint> >& allPoints)
 {
     allKeypoints.resize(nlevels);
+    allPoints.resize(nlevels);
 
     const float W = 30;
 
@@ -775,8 +777,9 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
         const int maxBorderX = mvImagePyramid[level].cols-EDGE_THRESHOLD+3;
         const int maxBorderY = mvImagePyramid[level].rows-EDGE_THRESHOLD+3;
 
-        vector<cv::KeyPoint> vToDistributeKeys;
+        vector<cv::KeyPoint> vToDistributeKeys, vToDistributePoints;
         vToDistributeKeys.reserve(nfeatures*10);
+        vToDistributePoints.reserve(nfeatures*10);
 
         const float width = (maxBorderX-minBorderX);
         const float height = (maxBorderY-minBorderY);
@@ -825,6 +828,31 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                     }
                 }
 
+
+                // Additional VO points using our modified cornerEdgeHarris
+                vector<Point2f> corners;
+                vector<cv::Vec6f> lambdasVectors; // Not used but important due
+
+                int wantedNo = mnFeaturesPerLevel[level] * 1.5 / (nRows * nCols) ;
+                int minDistanceOfFeatures = 0;
+                double lambdaThreshold = 0.000001;
+
+                cornerEdgeHarrisExtractor(mvImagePyramid[level].rowRange(iniY, maxY).colRange(iniX, maxX), corners,
+                                          lambdasVectors, wantedNo, 10e-80, minDistanceOfFeatures, noArray(), 3,
+                                          lambdaThreshold);
+
+                vector<cv::KeyPoint> vKeysCellCE;
+                cv::KeyPoint::convert(corners, vKeysCellCE);
+                if(!vKeysCellCE.empty())
+                {
+                    for(vector<cv::KeyPoint>::iterator vit=vKeysCellCE.begin(); vit!=vKeysCellCE.end();vit++)
+                    {
+                        (*vit).pt.x+=j*wCell;
+                        (*vit).pt.y+=i*hCell;
+                        vToDistributePoints.push_back(*vit);
+                    }
+                }
+
             }
         }
 
@@ -844,6 +872,22 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
             keypoints[i].pt.y+=minBorderY;
             keypoints[i].octave=level;
             keypoints[i].size = scaledPatchSize;
+        }
+
+
+        vector<KeyPoint> & points = allPoints[level];
+        points.reserve(nfeatures);
+
+        points = DistributeOctTree(vToDistributePoints, minBorderX, maxBorderX,
+                                      minBorderY, maxBorderY,mnFeaturesPerLevel[level], level);
+
+        // Add border to coordinates and scale information
+        const int nps = points.size();
+        for(int i=0; i<nps ; i++)
+        {
+            points[i].pt.x+=minBorderX;
+            points[i].pt.y+=minBorderY;
+            points[i].octave=level;
         }
     }
 
@@ -1041,7 +1085,7 @@ static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Ma
 }
 
 void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
-                      OutputArray _descriptors)
+                      OutputArray _descriptors, vector<KeyPoint>& _points)
 { 
     if(_image.empty())
         return;
@@ -1055,9 +1099,10 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     // Pre-compute the image gradient and floating-point pyramid
     ComputePhotometricBAPyramid(image);
 
-    vector < vector<KeyPoint> > allKeypoints;
-    ComputeKeyPointsOctTree(allKeypoints);
+    vector < vector<KeyPoint> > allKeypoints, allPoints;
+    ComputeKeyPointsOctTree(allKeypoints, allPoints);
     //ComputeKeyPointsOld(allKeypoints);
+
 
     Mat descriptors;
 
@@ -1105,7 +1150,28 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
         // And add the keypoints to the output
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
+
+
+    for (int level = 0; level < nlevels; ++level)
+    {
+        vector<KeyPoint>& points = allPoints[level];
+
+        // Scale keypoint coordinates
+        if (level != 0)
+        {
+            float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
+            for (vector<KeyPoint>::iterator keypoint = points.begin(),
+                         keypointEnd = points.end(); keypoint != keypointEnd; ++keypoint)
+                keypoint->pt *= scale;
+        }
+
+        // And add the keypoints to the output
+        _points.insert(_points.end(), points.begin(), points.end());
+    }
+
+    std::cout <<"High-gradient points: " << _points.size() << std::endl;
 }
+
 
 void ORBextractor::ComputePyramid(cv::Mat image)
 {

@@ -197,6 +197,8 @@ public:
     // Affine
     double affineAL, affineAR, affineBL, affineBR;
 
+    // High gradient VO points (u, v, indDepth)
+    std::vector<Eigen::Vector3f> mHGPoints;
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:

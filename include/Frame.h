@@ -136,7 +136,7 @@ public:
     // In the RGB-D case, RGB images can be distorted.
     std::vector<cv::KeyPoint> mvKeys, mvKeysRight;
     std::vector<cv::KeyPoint> mvKeysUn;
-    std::vector<cv::KeyPoint> mvHighGradientPoints;
+    std::vector<cv::KeyPoint> mvHighGradientPoints, mvHighGradientPointsRight;
 
     // Corresponding stereo coordinate and depth for each keypoint.
     // "Monocular" keypoints have a negative value.
@@ -152,6 +152,9 @@ public:
 
     // MapPoints associated to keypoints, NULL pointer if no association.
     std::vector<MapPoint*> mvpMapPoints;
+
+    // High gradient VO points (u, v, indDepth)
+    std::vector<Eigen::Vector3f> mHGPoints;
 
     // Flag to identify outlier associations.
     std::vector<bool> mvbOutlier;

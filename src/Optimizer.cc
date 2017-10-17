@@ -863,11 +863,6 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             if(pMP)
                 if(!pMP->isBad())
                     lLocalMapPoints.insert(pMP);
-//                    if(pMP->mnBALocalForKF!=firstKF->mnId)
-//                    {
-//                        lLocalMapPoints.push_back(pMP);
-//                        pMP->mnBALocalForKF=firstKF->mnId;
-//                    }
         }
     }
 
@@ -928,6 +923,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     vector<MapPoint*> vpMapPointEdgeStereo;
     vpMapPointEdgeStereo.reserve(nExpectedSize);
 
+    unsigned long maxMPid = 0;
     for(auto lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
     {
         MapPoint *pMP = *lit;
@@ -958,15 +954,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
         vPoint->setMarginalized(true);
         optimizer.addVertex(vPoint);
 
+        if ( id > maxMPid )
+            maxMPid = id;
+
         //Set edges
         for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
         {
             KeyFrame* pKFi = *lit;
-
-            // Let's check if observation keyframe is in the list
-            bool found = (std::find(lLocalKeyFrames.begin(), lLocalKeyFrames.end(), pKFi) != lLocalKeyFrames.end());
-            if (!found)
-                continue;
 
             if(!pKFi->isBad())
             {
@@ -1010,6 +1004,79 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             }
         }
     }
+
+
+
+    // TODO: Experimental code for high gradient points
+
+    // For all poses, consider every point in other poses
+
+    int counter = maxMPid + 1; // TODO: HGPoints need to have some id to retrieve estimates?
+    for(list<KeyFrame*>::iterator ait=lLocalKeyFrames.begin(), aend=lLocalKeyFrames.end(); ait!=aend; ait++)
+    {
+        KeyFrame* refKF = *ait;
+
+        if(refKF->isBad())
+            continue;
+
+        for (auto &hgPoint : refKF->mHGPoints) {
+
+            // Creating a new point
+            g2o::VertexSBAPointInvD *vPoint = new g2o::VertexSBAPointInvD();
+
+            vPoint->setEstimate(hgPoint[2]);
+
+            // original observation
+            vPoint->u0 = hgPoint[0];
+            vPoint->v0 = hgPoint[1];
+
+//            std::cout << hgPoint[0] << " " << hgPoint[1] << " " << hgPoint[2] << std::endl;
+
+            int id = counter++;
+            vPoint->setId(id);
+            vPoint->setMarginalized(true);
+            optimizer.addVertex(vPoint);
+
+            // For all observations
+            for (list<KeyFrame *>::iterator lit = lLocalKeyFrames.begin(), lend = lLocalKeyFrames.end();
+                 lit != lend; lit++) {
+                KeyFrame *pKFi = *lit;
+
+                g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+                e->selectPyramidIndex(optimizationLvL);
+
+                double baseline = refKF->mbf / refKF->fx;
+                // It is the same pose, so it is the left-right stereo constraint
+                if (refKF == pKFi) {
+                    e->setAdditionalData(refKF->imagePyramidLeft, refKF->imagePyramidRight, baseline);
+
+                    optimizer.addEdge(e);
+                }
+                else {
+                    // Other pose so left to anchor and right to anchor
+
+                    // Left to anchor
+                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0);
+
+                    optimizer.addEdge(e);
+
+                    // Right to anchor
+                    g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+                    e->selectPyramidIndex(optimizationLvL);
+
+                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
+
+                    optimizer.addEdge(e);
+                }
+            }
+
+        }
+
+
+    }
+
+    // TODO: Experimental code for high gradient points - END
+
 
     if(pbStopFlag)
         if(*pbStopFlag)

@@ -22,6 +22,11 @@
 #include "Converter.h"
 #include "ORBmatcher.h"
 #include <thread>
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/core/utility.hpp>
 
 namespace ORB_SLAM2
 {
@@ -89,12 +94,6 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
     ComputeStereoMatches();
 
-    // TODO: TEST visualization
-    mvHighGradientPoints.push_back(cv::KeyPoint(10, 10, 0));
-
-    // TODO: Compute the 3D positions of those points
-    //
-
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
     mvbOutlier = vector<bool>(N,false);
 
@@ -120,6 +119,26 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mb = mbf/fx;
 
     AssignFeaturesToGrid();
+
+    // Computing 3D positions of the high-gradient points
+    cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create(0,16,15);
+    cv::Mat disp;
+    disp.create(imLeft.size(), CV_16SC1);
+    sgbm->compute(imLeft, imRight, disp);
+
+   for (auto &point : mvHighGradientPoints) {
+        double invDepth = disp.at<unsigned short>(point.pt.y, point.pt.x) / 16.0 * 1 / mbf;
+
+        if ( invDepth > 0 ) {
+            Eigen::Vector3f initPoint;
+            initPoint[0] = point.pt.x;
+            initPoint[1] = point.pt.y;
+            initPoint[2] = invDepth;
+            mHGPoints.push_back(initPoint);
+        }
+   }
+
+   std::cout << "Initialized " << mHGPoints.size() << " high-gradient points" << std::endl;
 }
 
 Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
@@ -253,9 +272,9 @@ void Frame::AssignFeaturesToGrid()
 void Frame::ExtractORB(int flag, const cv::Mat &im)
 {
     if(flag==0)
-        (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
+        (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors, mvHighGradientPoints);
     else
-        (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
+        (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight, mvHighGradientPointsRight);
 }
 
 void Frame::SetPose(cv::Mat Tcw)

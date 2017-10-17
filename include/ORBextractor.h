@@ -60,6 +60,11 @@ public:
       std::vector<cv::KeyPoint>& keypoints,
       cv::OutputArray descriptors);
 
+    void operator()( cv::InputArray image, cv::InputArray mask,
+                     std::vector<cv::KeyPoint>& keypoints,
+                     cv::OutputArray descriptors,
+                     std::vector<cv::KeyPoint>& points);
+
     int inline GetLevels(){
         return nlevels;}
 
@@ -89,7 +94,7 @@ protected:
 
     void ComputePyramid(cv::Mat image);
     void ComputePhotometricBAPyramid(cv::Mat image);
-    void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);    
+    void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint> >& allKeypoints, std::vector< std::vector<cv::KeyPoint>> & allPoints);
     std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                            const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
 
