@@ -58,6 +58,7 @@ src/ORBextractor.cc
 src/ORBmatcher.cc
 src/FrameDrawer.cc
 src/Converter.cc
+src/HighGradientPoint.cc
 src/MapPoint.cc
 src/KeyFrame.cc
 src/Map.cc

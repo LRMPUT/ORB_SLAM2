@@ -29,6 +29,7 @@
 #include "ORBVocabulary.h"
 #include "KeyFrame.h"
 #include "ORBextractor.h"
+#include "HighGradientPoint.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -154,7 +155,7 @@ public:
     std::vector<MapPoint*> mvpMapPoints;
 
     // High gradient VO points (u, v, indDepth)
-    std::vector<Eigen::Vector3f> mHGPoints;
+    std::vector<HighGradientPoint*> mHGPoints;
 
     // Flag to identify outlier associations.
     std::vector<bool> mvbOutlier;

@@ -130,11 +130,8 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
         double invDepth = disp.at<unsigned short>(point.pt.y, point.pt.x) / 16.0 * 1 / mbf;
 
         if ( invDepth > 0 ) {
-            Eigen::Vector3f initPoint;
-            initPoint[0] = point.pt.x;
-            initPoint[1] = point.pt.y;
-            initPoint[2] = invDepth;
-            mHGPoints.push_back(initPoint);
+            HighGradientPoint* hgPoint = new HighGradientPoint(point.pt.x, point.pt.y, invDepth);
+            mHGPoints.push_back(hgPoint);
         }
    }
 

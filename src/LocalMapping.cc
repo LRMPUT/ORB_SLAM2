@@ -191,6 +191,10 @@ void LocalMapping::ProcessNewKeyFrame()
             delete oldKF->imagePyramidLeft[i];
             delete oldKF->imagePyramidRight[i];
         }
+        for (int i = 0; i < oldKF->mHGPoints.size(); i++) {
+            delete oldKF->mHGPoints[i];
+        }
+
         if (pbaKeyFrames.front()->mnId%3 != 0)
             pbaKeyFrames.front()->SetBadFlag();
         pbaKeyFrames.pop_front();

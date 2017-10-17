@@ -28,6 +28,7 @@
 #include "ORBextractor.h"
 #include "Frame.h"
 #include "KeyFrameDatabase.h"
+#include "HighGradientPoint.h"
 
 #include "Thirdparty/g2o/g2o/types/types_six_dof_photo.h"
 
@@ -198,7 +199,7 @@ public:
     double affineAL, affineAR, affineBL, affineBR;
 
     // High gradient VO points (u, v, indDepth)
-    std::vector<Eigen::Vector3f> mHGPoints;
+    std::vector<HighGradientPoint*> mHGPoints;
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:
