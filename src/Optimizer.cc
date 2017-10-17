@@ -1129,6 +1129,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             e->setLevel(1);
         }
     }
+    optimizer.initializeOptimization(0); // TODO: NOT NEEDED?
 
     std::cout << "LvL " << optimizationLvL << " Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
     std::cout << "LvL " << optimizationLvL << " Before HG " << Optimizer::ComputeAvgChi2(vpEdgesStereoHG, thHuberSquared) << std::endl;
