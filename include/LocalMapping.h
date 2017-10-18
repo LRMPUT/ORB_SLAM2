@@ -123,6 +123,7 @@ protected:
     std::mutex mMutexAccept;
 
     std::list<KeyFrame*> pbaKeyFrames;
+    std::list<HighGradientPoint*> hgMap;
 };
 
 } //namespace ORB_SLAM

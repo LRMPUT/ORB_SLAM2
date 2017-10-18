@@ -841,7 +841,8 @@ std::string Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &
     return "avg. chi2 : " + to_string(chi2Sum / chi2Count) + " over " + to_string(chi2Count) + " inliers";
 }
 
-void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, bool* pbStopFlag, Map* pMap, int optimizationLvL, bool bDoMoreAtAll) {
+void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, std::list<HighGradientPoint*> &lHGMap,
+                                                 bool* pbStopFlag, Map* pMap, int optimizationLvL, bool bDoMoreAtAll) {
     std::cout << "Optimizer::LocalPhotometricBundleAdjustment - lvl : " << optimizationLvL << std::endl;
     const float thHuber = 9; // DSO has 9
     const float thHuberSquared = thHuber*thHuber; // as in the DSO
@@ -1028,69 +1029,59 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     vpEdgesStereoHG.reserve(nExpectedSize);
 
     // For all poses, consider every point in other poses
-    std::vector<HighGradientPoint*> localHighGradientPoints;
-    for(list<KeyFrame*>::iterator ait=lLocalKeyFrames.begin(), aend=lLocalKeyFrames.end(); ait!=aend; ait++)
-    {
-        KeyFrame* refKF = *ait;
+    for (auto &hgPoint : lHGMap) {
+        KeyFrame* refKF = hgPoint->refKF;
 
-        if(refKF->isBad())
-            continue;
+        // Creating a new point
+        g2o::VertexSBAPointInvD *vPoint = new g2o::VertexSBAPointInvD();
 
-        localHighGradientPoints.insert(localHighGradientPoints.end(), refKF->mHGPoints.begin(), refKF->mHGPoints.end());
-        for (auto &hgPoint : refKF->mHGPoints) {
+        vPoint->setEstimate(hgPoint->invDepth);
 
-            // Creating a new point
-            g2o::VertexSBAPointInvD *vPoint = new g2o::VertexSBAPointInvD();
-
-            vPoint->setEstimate(hgPoint->invDepth);
-
-            // original observation
-            vPoint->u0 = hgPoint->u;
-            vPoint->v0 = hgPoint->v;
+        // original observation
+        vPoint->u0 = hgPoint->u;
+        vPoint->v0 = hgPoint->v;
 
 //            std::cout << hgPoint[0] << " " << hgPoint[1] << " " << hgPoint[2] << std::endl;
 
-            int id = maxMPid + hgPoint->id + 1;
-            vPoint->setId(id);
-            vPoint->setMarginalized(true);
-            optimizer.addVertex(vPoint);
+        int id = maxMPid + hgPoint->id + 1;
+        vPoint->setId(id);
+        vPoint->setMarginalized(true);
+        optimizer.addVertex(vPoint);
 
-            // For all observations
-            for (list<KeyFrame *>::iterator lit = lLocalKeyFrames.begin(), lend = lLocalKeyFrames.end();
-                 lit != lend; lit++) {
-                KeyFrame *pKFi = *lit;
+        // For all observations
+        for (list<KeyFrame *>::iterator lit = lLocalKeyFrames.begin(), lend = lLocalKeyFrames.end();
+             lit != lend; lit++) {
+            KeyFrame *pKFi = *lit;
 
-                g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+            g2o::EdgeInverseDepthPatch *e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+            e->selectPyramidIndex(optimizationLvL);
+
+            double baseline = refKF->mbf / refKF->fx;
+            // It is the same pose, so it is the left-right stereo constraint
+            if (refKF == pKFi) {
+                e->setAdditionalData(refKF->imagePyramidLeft, refKF->imagePyramidRight, baseline);
+
+                optimizer.addEdge(e);
+                vpEdgesStereoHG.push_back(e);
+            } else {
+                // Other pose so left to anchor and right to anchor
+
+                // Left to anchor
+                e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0);
+
+                optimizer.addEdge(e);
+                vpEdgesStereoHG.push_back(e);
+
+                // Right to anchor
+                g2o::EdgeInverseDepthPatch *e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi,
+                                                                                    thHuber);
                 e->selectPyramidIndex(optimizationLvL);
 
-                double baseline = refKF->mbf / refKF->fx;
-                // It is the same pose, so it is the left-right stereo constraint
-                if (refKF == pKFi) {
-                    e->setAdditionalData(refKF->imagePyramidLeft, refKF->imagePyramidRight, baseline);
+                e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
 
-                    optimizer.addEdge(e);
-                    vpEdgesStereoHG.push_back(e);
-                }
-                else {
-                    // Other pose so left to anchor and right to anchor
-
-                    // Left to anchor
-                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0);
-
-                    optimizer.addEdge(e);
-                    vpEdgesStereoHG.push_back(e);
-
-                    // Right to anchor
-                    g2o::EdgeInverseDepthPatch* e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
-                    e->selectPyramidIndex(optimizationLvL);
-
-                    e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
-
-                    optimizer.addEdge(e);
-                    vpEdgesStereoHG.push_back(e);
-                }
+                optimizer.addEdge(e);
+                vpEdgesStereoHG.push_back(e);
             }
-
         }
 
 
@@ -1288,7 +1279,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
 
     // HG Points
-    for(auto lit=localHighGradientPoints.begin(), lend=localHighGradientPoints.end(); lit!=lend; lit++)
+    for(auto lit=lHGMap.begin(), lend=lHGMap.end(); lit!=lend; lit++)
     {
         HighGradientPoint *pHGP = *lit;
 

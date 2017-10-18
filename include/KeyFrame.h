@@ -42,6 +42,7 @@ class Map;
 class MapPoint;
 class Frame;
 class KeyFrameDatabase;
+class HighGradientPoint;
 
 class KeyFrame
 {

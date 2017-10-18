@@ -73,6 +73,11 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
         affineBL = 0;
         affineBR = 0;
     }
+
+    // Set this keframe as refKF for HGPoints
+    for (auto& hgPoint: mHGPoints) {
+        hgPoint->refKF = this;
+    }
 }
 
 void KeyFrame::ComputeBoW()

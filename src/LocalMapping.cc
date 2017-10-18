@@ -86,11 +86,11 @@ void LocalMapping::Run()
 //                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpMap);
 //                    else {
                     if(mpMap->KeyFramesInMap()>2) {
-                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 7, false);
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, hgMap, &mbAbortBA, mpMap, 7, false);
                         mbAbortBA = false;
-                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 4, false);
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, hgMap, &mbAbortBA, mpMap, 4, false);
                         mbAbortBA = false;
-                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, &mbAbortBA, mpMap, 0, true);
+                        Optimizer::LocalPhotometricBundleAdjustment(pbaKeyFrames, hgMap, &mbAbortBA, mpMap, 0, true);
 //                        exit(0);
                     }
                 }
@@ -182,8 +182,7 @@ void LocalMapping::ProcessNewKeyFrame()
     mpMap->AddKeyFrame(mpCurrentKeyFrame);
 
     // Insert Keyframe for PBA and remove old KF if there are too much frames
-    pbaKeyFrames.push_back(mpCurrentKeyFrame);
-    if ( pbaKeyFrames.size() > 10 ) {
+    if ( pbaKeyFrames.size() > 9 ) {
         std::cout << "Removing oldKF to release memory" << std::endl;
 
         KeyFrame* oldKF = pbaKeyFrames.front();
@@ -197,8 +196,30 @@ void LocalMapping::ProcessNewKeyFrame()
 
         if (pbaKeyFrames.front()->mnId%3 != 0)
             pbaKeyFrames.front()->SetBadFlag();
+
+        for (auto it = hgMap.begin(); it != hgMap.end();) {
+            if ( (*it)->refKF == pbaKeyFrames.front() )
+                it = hgMap.erase(it);
+            else
+                it++;
+        }
+
         pbaKeyFrames.pop_front();
     }
+
+    pbaKeyFrames.push_back(mpCurrentKeyFrame);
+    hgMap.insert(hgMap.end(), mpCurrentKeyFrame->mHGPoints.begin(), mpCurrentKeyFrame->mHGPoints.end());
+
+    const int PBA_ACTIVE_HGPOINT_NUMBER = 2000;
+    const int minBorderX = mpCurrentKeyFrame->mnMinX;
+    const int maxBorderX = mpCurrentKeyFrame->mnMaxX;
+    const int minBorderY = mpCurrentKeyFrame->mnMinY;
+    const int maxBorderY = mpCurrentKeyFrame->mnMaxY;
+
+    std::cout << "HighGradientPoint::DistributeOctTree: BEFORE: " << hgMap.size() << std::endl;
+    hgMap = HighGradientPoint::DistributeOctTree(mpCurrentKeyFrame, hgMap, minBorderX, maxBorderX,
+                                                 minBorderY, maxBorderY, PBA_ACTIVE_HGPOINT_NUMBER);
+    std::cout << "HighGradientPoint::DistributeOctTree: AFTER: " << hgMap.size() << std::endl;
 }
 
 void LocalMapping::MapPointCulling()
