@@ -1028,8 +1028,13 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     vector<g2o::EdgeInverseDepthPatch*> vpEdgesStereoHG;
     vpEdgesStereoHG.reserve(nExpectedSize);
 
+    vector<HighGradientPoint*> vpHGPointEdgeStereoHG;
+    vpEdgesStereoHG.reserve(nExpectedSize);
+
     // For all poses, consider every point in other poses
     for (auto &hgPoint : lHGMap) {
+        hgPoint->obsCounter = 0;
+
         KeyFrame* refKF = hgPoint->refKF;
 
         // Creating a new point
@@ -1063,6 +1068,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
                 optimizer.addEdge(e);
                 vpEdgesStereoHG.push_back(e);
+                vpHGPointEdgeStereoHG.push_back(hgPoint);
+                hgPoint->obsCounter++;
             } else {
                 // Other pose so left to anchor and right to anchor
 
@@ -1071,6 +1078,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
                 optimizer.addEdge(e);
                 vpEdgesStereoHG.push_back(e);
+                vpHGPointEdgeStereoHG.push_back(hgPoint);
+                hgPoint->obsCounter++;
 
                 // Right to anchor
                 g2o::EdgeInverseDepthPatch *e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi,
@@ -1081,6 +1090,8 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 
                 optimizer.addEdge(e);
                 vpEdgesStereoHG.push_back(e);
+                vpHGPointEdgeStereoHG.push_back(hgPoint);
+                hgPoint->obsCounter++;
             }
         }
 
@@ -1120,7 +1131,7 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             e->setLevel(1);
         }
     }
-    optimizer.initializeOptimization(0); // TODO: NOT NEEDED?
+    optimizer.initializeOptimization(0);
 
     std::cout << "LvL " << optimizationLvL << " Before " << Optimizer::ComputeAvgChi2(vpEdgesStereo, vpMapPointEdgeStereo, thHuberSquared) << std::endl;
     std::cout << "LvL " << optimizationLvL << " Before HG " << Optimizer::ComputeAvgChi2(vpEdgesStereoHG, thHuberSquared) << std::endl;
@@ -1208,6 +1219,30 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
             vToErase.push_back(make_pair(pKFi,pMP));
         }
     }
+
+    for(size_t i=0, iend=vpEdgesStereoHG.size(); i<iend;i++)
+    {
+        g2o::EdgeInverseDepthPatch* e = vpEdgesStereoHG[i];
+        HighGradientPoint* hgPoint = vpHGPointEdgeStereoHG[i];
+
+        if(e->chi2()>thHuberSquared || !e->isDepthPositive())
+            hgPoint->obsCounter--;
+    }
+
+    int maxPossibleObs = (lLocalKeyFrames.size() - 1) * 2 + 1;
+    double discardThr = 0.3; // Remove if less than 30% of observations in a window are inliers
+    int discardNumber = 0;
+    for (auto it = lHGMap.begin(); it!= lHGMap.end();) {
+
+        if ( (*it)->obsCounter < discardThr * maxPossibleObs) {
+            it = lHGMap.erase(it);
+            discardNumber++;
+        }
+        else
+            it++;
+    }
+    std::cout << "Discarded points count: " << discardNumber << std::endl;
+
 
     // Get Map Mutex
     unique_lock<mutex> lock(pMap->mMutexMapUpdate);

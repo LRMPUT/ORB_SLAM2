@@ -34,56 +34,56 @@ namespace ORB_SLAM2 {
         n1.UR = cv::Point2i(UL.x+halfX,UL.y);
         n1.BL = cv::Point2i(UL.x,UL.y+halfY);
         n1.BR = cv::Point2i(UL.x+halfX,UL.y+halfY);
-        n1.vKeys.reserve(vKeys.size());
+        n1.hgPoints.reserve(hgPoints.size());
 
         n2.UL = n1.UR;
         n2.UR = UR;
         n2.BL = n1.BR;
         n2.BR = cv::Point2i(UR.x,UL.y+halfY);
-        n2.vKeys.reserve(vKeys.size());
+        n2.hgPoints.reserve(hgPoints.size());
 
         n3.UL = n1.BL;
         n3.UR = n1.BR;
         n3.BL = BL;
         n3.BR = cv::Point2i(n1.BR.x,BL.y);
-        n3.vKeys.reserve(vKeys.size());
+        n3.hgPoints.reserve(hgPoints.size());
 
         n4.UL = n3.UR;
         n4.UR = n2.BR;
         n4.BL = n3.BR;
         n4.BR = BR;
-        n4.vKeys.reserve(vKeys.size());
+        n4.hgPoints.reserve(hgPoints.size());
 
         //Associate points to childs
-        for(size_t i=0;i<vKeys.size();i++)
+        for(size_t i=0;i<hgPoints.size();i++)
         {
-            HighGradientPoint * kp = vKeys[i];
+            HighGradientPoint * kp = hgPoints[i];
             if(kp->u <n1.UR.x)
             {
                 if(kp->v <n1.BR.y)
-                    n1.vKeys.push_back(kp);
+                    n1.hgPoints.push_back(kp);
                 else
-                    n3.vKeys.push_back(kp);
+                    n3.hgPoints.push_back(kp);
             }
             else if(kp->v <n1.BR.y)
-                n2.vKeys.push_back(kp);
+                n2.hgPoints.push_back(kp);
             else
-                n4.vKeys.push_back(kp);
+                n4.hgPoints.push_back(kp);
         }
 
-        if(n1.vKeys.size()==1)
+        if(n1.hgPoints.size()==1)
             n1.bNoMore = true;
-        if(n2.vKeys.size()==1)
+        if(n2.hgPoints.size()==1)
             n2.bNoMore = true;
-        if(n3.vKeys.size()==1)
+        if(n3.hgPoints.size()==1)
             n3.bNoMore = true;
-        if(n4.vKeys.size()==1)
+        if(n4.hgPoints.size()==1)
             n4.bNoMore = true;
 
     }
 
     list<HighGradientPoint*> HighGradientPoint::DistributeOctTree(KeyFrame* currentKF,
-                                                                  list<HighGradientPoint*> vToDistributeKeys, const int &minX,
+                                                                  list<HighGradientPoint*> hgPointsToDistribute, const int &minX,
                                                                   const int &maxX, const int &minY, const int &maxY, const int &numberOfFeatures)
     {
 
@@ -91,7 +91,7 @@ namespace ORB_SLAM2 {
         double fx = currentKF->fx, fy = currentKF->fy;
 
         list<HighGradientPoint*> outsideCurImage;
-        for (auto it = vToDistributeKeys.begin(); it!= vToDistributeKeys.end();) {
+        for (auto it = hgPointsToDistribute.begin(); it!= hgPointsToDistribute.end();) {
             cv::Mat worldPos = (*it)->getGlobalPosition();
             cv::Mat posInCurrent = currentKF->GetRotation() * worldPos + currentKF->GetTranslation();
             double X = posInCurrent.at<float>(0);
@@ -103,7 +103,7 @@ namespace ORB_SLAM2 {
             // Projection outside the image
             if ( (*it)->curKF_u < minX || (*it)->curKF_u >= maxX || (*it)->curKF_v < minY || (*it)->curKF_v >= maxY ) {
                 outsideCurImage.push_back(*it);
-                it = vToDistributeKeys.erase(it);
+                it = hgPointsToDistribute.erase(it);
             }
             else
                 it++;
@@ -128,28 +128,28 @@ namespace ORB_SLAM2 {
             ni.UR = cv::Point2i(hX*static_cast<float>(i+1),0);
             ni.BL = cv::Point2i(ni.UL.x,maxY-minY);
             ni.BR = cv::Point2i(ni.UR.x,maxY-minY);
-            ni.vKeys.reserve(vToDistributeKeys.size());
+            ni.hgPoints.reserve(hgPointsToDistribute.size());
 
             lNodes.push_back(ni);
             vpIniNodes[i] = &lNodes.back();
         }
 
         //Associate points to childs
-        for (auto &kp : vToDistributeKeys) {
+        for (auto &kp : hgPointsToDistribute) {
 //            std::cout << "vpIniNodes.size() = " << vpIniNodes.size() << " kp->u = " << kp->u << " hX = " << hX << std::endl;
-            vpIniNodes[kp->u/hX]->vKeys.push_back(kp);
+            vpIniNodes[kp->u/hX]->hgPoints.push_back(kp);
         }
 
         list<ExtractorNodeHG>::iterator lit = lNodes.begin();
 
         while(lit!=lNodes.end())
         {
-            if(lit->vKeys.size()==1)
+            if(lit->hgPoints.size()==1)
             {
                 lit->bNoMore=true;
                 lit++;
             }
-            else if(lit->vKeys.empty())
+            else if(lit->hgPoints.empty())
                 lit = lNodes.erase(lit);
             else
                 lit++;
@@ -190,43 +190,43 @@ namespace ORB_SLAM2 {
                     lit->DivideNode(n1,n2,n3,n4);
 
                     // Add childs if they contain points
-                    if(n1.vKeys.size()>0)
+                    if(n1.hgPoints.size()>0)
                     {
                         lNodes.push_front(n1);
-                        if(n1.vKeys.size()>1)
+                        if(n1.hgPoints.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.push_back(make_pair(n1.hgPoints.size(),&lNodes.front()));
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
-                    if(n2.vKeys.size()>0)
+                    if(n2.hgPoints.size()>0)
                     {
                         lNodes.push_front(n2);
-                        if(n2.vKeys.size()>1)
+                        if(n2.hgPoints.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.push_back(make_pair(n2.hgPoints.size(),&lNodes.front()));
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
-                    if(n3.vKeys.size()>0)
+                    if(n3.hgPoints.size()>0)
                     {
                         lNodes.push_front(n3);
-                        if(n3.vKeys.size()>1)
+                        if(n3.hgPoints.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.push_back(make_pair(n3.hgPoints.size(),&lNodes.front()));
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
-                    if(n4.vKeys.size()>0)
+                    if(n4.hgPoints.size()>0)
                     {
                         lNodes.push_front(n4);
-                        if(n4.vKeys.size()>1)
+                        if(n4.hgPoints.size()>1)
                         {
                             nToExpand++;
-                            vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                            vSizeAndPointerToNode.push_back(make_pair(n4.hgPoints.size(),&lNodes.front()));
                             lNodes.front().lit = lNodes.begin();
                         }
                     }
@@ -260,39 +260,39 @@ namespace ORB_SLAM2 {
                         vPrevSizeAndPointerToNode[j].second->DivideNode(n1,n2,n3,n4);
 
                         // Add childs if they contain points
-                        if(n1.vKeys.size()>0)
+                        if(n1.hgPoints.size()>0)
                         {
                             lNodes.push_front(n1);
-                            if(n1.vKeys.size()>1)
+                            if(n1.hgPoints.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n1.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.push_back(make_pair(n1.hgPoints.size(),&lNodes.front()));
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
-                        if(n2.vKeys.size()>0)
+                        if(n2.hgPoints.size()>0)
                         {
                             lNodes.push_front(n2);
-                            if(n2.vKeys.size()>1)
+                            if(n2.hgPoints.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n2.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.push_back(make_pair(n2.hgPoints.size(),&lNodes.front()));
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
-                        if(n3.vKeys.size()>0)
+                        if(n3.hgPoints.size()>0)
                         {
                             lNodes.push_front(n3);
-                            if(n3.vKeys.size()>1)
+                            if(n3.hgPoints.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n3.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.push_back(make_pair(n3.hgPoints.size(),&lNodes.front()));
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
-                        if(n4.vKeys.size()>0)
+                        if(n4.hgPoints.size()>0)
                         {
                             lNodes.push_front(n4);
-                            if(n4.vKeys.size()>1)
+                            if(n4.hgPoints.size()>1)
                             {
-                                vSizeAndPointerToNode.push_back(make_pair(n4.vKeys.size(),&lNodes.front()));
+                                vSizeAndPointerToNode.push_back(make_pair(n4.hgPoints.size(),&lNodes.front()));
                                 lNodes.front().lit = lNodes.begin();
                             }
                         }
@@ -315,10 +315,10 @@ namespace ORB_SLAM2 {
 
         for(list<ExtractorNodeHG>::iterator lit=lNodes.begin(); lit!=lNodes.end(); lit++)
         {
-            vector<HighGradientPoint*> &vNodeKeys = lit->vKeys;
+            vector<HighGradientPoint*> &vNodeKeys = lit->hgPoints;
             HighGradientPoint* pKP = vNodeKeys[0];
 
-            // TODO! Now prefer older features
+            // TODO! Think about policy! Now prefer older features
             float age = pKP->refKF->mnId;
 
             for(size_t k=1;k<vNodeKeys.size();k++)

@@ -20,8 +20,8 @@ namespace ORB_SLAM2 {
         cv::Mat getGlobalPosition();
 
         static list<HighGradientPoint*> DistributeOctTree(KeyFrame* currentKF,
-                                                          list<HighGradientPoint*> vToDistributeKeys, const int &minX,
-                                                          const int &maxX, const int &minY, const int &maxY, const int &N);
+                                                          list<HighGradientPoint*> hgPointsToDistribute, const int &minX,
+                                                          const int &maxX, const int &minY, const int &maxY, const int &numberOfFeatures);
 
 
 
@@ -34,6 +34,8 @@ namespace ORB_SLAM2 {
 
         double curKF_u, curKF_v;
 
+        int obsCounter;
+
         KeyFrame* refKF;
 
     };
@@ -45,7 +47,7 @@ namespace ORB_SLAM2 {
 
         void DivideNode(ExtractorNodeHG &n1, ExtractorNodeHG &n2, ExtractorNodeHG &n3, ExtractorNodeHG &n4);
 
-        std::vector<HighGradientPoint*> vKeys;
+        std::vector<HighGradientPoint*> hgPoints;
         cv::Point2i UL, UR, BL, BR;
         std::list<ExtractorNodeHG>::iterator lit;
         bool bNoMore;
