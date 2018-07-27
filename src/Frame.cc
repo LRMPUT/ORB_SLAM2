@@ -121,13 +121,20 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     AssignFeaturesToGrid();
 
     // Computing 3D positions of the high-gradient points
-    cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create(0,16,15);
+    cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create(0,128,9);
     cv::Mat disp;
     disp.create(imLeft.size(), CV_16SC1);
     sgbm->compute(imLeft, imRight, disp);
 
+//    double min, max;
+//    cv::minMaxIdx(disp, &min, &max);
+//    cv::Mat adjMap;
+//    cv::convertScaleAbs(disp, adjMap, 255 / max);
+//    cv::imshow("Out", adjMap);
+//    cv::waitKey(1);
+
    for (auto &point : mvHighGradientPoints) {
-        double invDepth = disp.at<unsigned short>(point.pt.y, point.pt.x) / 16.0 * 1 / mbf;
+        double invDepth = (disp.at<unsigned short>(point.pt.y, point.pt.x) / 16.0 ) / mbf;
 
         if ( invDepth > 0 ) {
             HighGradientPoint* hgPoint = new HighGradientPoint(point.pt.x, point.pt.y, invDepth);

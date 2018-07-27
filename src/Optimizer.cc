@@ -841,6 +841,22 @@ std::string Optimizer::ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &
     return "avg. chi2 : " + to_string(chi2Sum / chi2Count) + " over " + to_string(chi2Count) + " inliers";
 }
 
+double Optimizer::ComputeAvgChi2Double(std::vector<g2o::EdgeInverseDepthPatch*> &edges, double thHuberSquared) {
+    double chi2Sum = 0;
+    int chi2Count = 0;
+
+    for (size_t i = 0, iend = edges.size(); i < iend; i++) {
+        g2o::EdgeInverseDepthPatch *e = edges[i];
+
+        e->computeError();
+        if (e->chi2() <= thHuberSquared && e->isDepthPositive()) {
+            chi2Sum += e->chi2();
+            chi2Count++;
+        }
+    }
+    return chi2Sum / chi2Count;
+}
+
 void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, std::list<HighGradientPoint*> &lHGMap,
                                                  bool* pbStopFlag, Map* pMap, int optimizationLvL, bool bDoMoreAtAll) {
     std::cout << "Optimizer::LocalPhotometricBundleAdjustment - lvl : " << optimizationLvL << std::endl;
@@ -1232,9 +1248,11 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
     int maxPossibleObs = (lLocalKeyFrames.size() - 1) * 2 + 1;
     double discardThr = 0.3; // Remove if less than 30% of observations in a window are inliers
     int discardNumber = 0;
+    int initialHGMapSize = lHGMap.size();
     for (auto it = lHGMap.begin(); it!= lHGMap.end();) {
 
-        if ( (*it)->obsCounter < discardThr * maxPossibleObs) {
+        // If should not remove more than 30% of all available points
+        if ( (*it)->obsCounter < discardThr * maxPossibleObs && discardNumber < 0.3 * initialHGMapSize) {
             it = lHGMap.erase(it);
             discardNumber++;
         }
@@ -1328,6 +1346,197 @@ void Optimizer::LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrame
 }
 
 
+double Optimizer::OptimizeInitialHGPointDepth(list<KeyFrame*> &lLocalKeyFrames, HighGradientPoint* hgPoint) {
+//    std::cout << "Optimizer::OptimizeInitialHGPointDepth" << std::endl;
+    const int optimizationLvL = 0;
+    const float thHuber = 9; // DSO has 9
+    const float thHuberSquared = thHuber*thHuber; // as in the DSO
+
+    const int blockSolverCameras = 10;
+    const int blockSolverPoses = 1;
+
+    // Setup optimizer
+    g2o::SparseOptimizer optimizer;
+
+    typedef g2o::BlockSolver< g2o::BlockSolverTraits<blockSolverCameras, blockSolverPoses> > OurBlockSolver;
+    OurBlockSolver::LinearSolverType *linearSolver;
+    linearSolver = new g2o::LinearSolverEigen<OurBlockSolver::PoseMatrixType>();
+    OurBlockSolver *solver_ptr = new OurBlockSolver(linearSolver);
+
+    g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+    optimizer.setAlgorithm(solver);
+
+
+    KeyFrame* firstKF = lLocalKeyFrames.front();
+    Eigen::Vector2d principal_point(firstKF->cx, firstKF->cy);
+    g2o::CameraParameters * cam_params
+            = new g2o::CameraParameters (firstKF->fx, firstKF->fy, principal_point, 0.);
+    cam_params->setId(0);
+    if (!optimizer.addParameter(cam_params)){
+        assert(false);
+    }
+
+    unsigned long maxKFid = 0;
+
+    // Set Local KeyFrame vertices
+    for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
+    {
+        KeyFrame* pKFi = *lit;
+        g2o::VertexSE3ExpmapBright * vSE3 = new g2o::VertexSE3ExpmapBright();
+        g2o::SE3QuatBright estimate;
+        estimate.se3quat = Converter::toSE3Quat(pKFi->GetPose());
+        estimate.aL = pKFi->affineAL;
+        estimate.bL = pKFi->affineBL;
+        estimate.aR = pKFi->affineAR;
+        estimate.bR = pKFi->affineBR;
+
+        vSE3->setEstimate(estimate);
+        vSE3->setId(pKFi->mnId);
+        vSE3->setFixed(true);
+        optimizer.addVertex(vSE3);
+        if(pKFi->mnId>maxKFid)
+            maxKFid=pKFi->mnId;
+    }
+
+
+    // TODO: Experimental code for high gradient points
+    vector<g2o::EdgeInverseDepthPatch*> vpEdgesStereoHG;
+    vpEdgesStereoHG.reserve(lLocalKeyFrames.size());
+
+    // Creating point
+    hgPoint->obsCounter = 0;
+
+    KeyFrame* refKF = hgPoint->refKF;
+
+    // Creating a new point
+    g2o::VertexSBAPointInvD *vPoint = new g2o::VertexSBAPointInvD();
+    vPoint->setEstimate(hgPoint->invDepth);
+
+    // original observation
+    vPoint->u0 = hgPoint->u;
+    vPoint->v0 = hgPoint->v;
+
+    int id = maxKFid + hgPoint->id + 1;
+    vPoint->setId(id);
+    vPoint->setMarginalized(true);
+    optimizer.addVertex(vPoint);
+
+    // For all observations
+    for (list<KeyFrame *>::iterator lit = lLocalKeyFrames.begin(), lend = lLocalKeyFrames.end();
+         lit != lend; lit++) {
+        KeyFrame *pKFi = *lit;
+
+        g2o::EdgeInverseDepthPatch *e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi, thHuber);
+        e->selectPyramidIndex(optimizationLvL);
+
+        double baseline = refKF->mbf / refKF->fx;
+        // It is the same pose, so it is the left-right stereo constraint
+        if (refKF == pKFi) {
+            e->setAdditionalData(refKF->imagePyramidLeft, refKF->imagePyramidRight, baseline);
+
+            optimizer.addEdge(e);
+            vpEdgesStereoHG.push_back(e);
+            hgPoint->obsCounter++;
+        }
+        else {
+            // Other pose so left to anchor and right to anchor
+
+            // Left to anchor
+            e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidLeft, 0);
+
+            optimizer.addEdge(e);
+            vpEdgesStereoHG.push_back(e);
+            hgPoint->obsCounter++;
+
+            // Right to anchor
+            g2o::EdgeInverseDepthPatch *e = Optimizer::AddEdgeInverseDepthPatch(optimizer, id, refKF, pKFi,
+                                                                                thHuber);
+            e->selectPyramidIndex(optimizationLvL);
+
+            e->setAdditionalData(refKF->imagePyramidLeft, pKFi->imagePyramidRight, baseline);
+
+            optimizer.addEdge(e);
+            vpEdgesStereoHG.push_back(e);
+            hgPoint->obsCounter++;
+        }
+    }
+
+//    std::cout << "Edges.size() : " << optimizer.edges().size() << " Vertices.size() : "
+//              <<optimizer.vertices().size() << " Depth guess [m]: " << 1/hgPoint->invDepth << std::endl ;
+
+    optimizer.initializeOptimization(0);
+
+    // Remove huge outliers straight away - 3 times the huber norm
+//    for(size_t i=0, iend=vpEdgesStereoHG.size(); i<iend;i++) {
+//        g2o::EdgeInverseDepthPatch *e = vpEdgesStereoHG[i];
+//
+//        if (e->chi2() > thHuberSquared*3 || !e->isDepthPositive()) {
+//            e->setLevel(1);
+//            hgPoint->obsCounter--;
+//        }
+//    }
+//    optimizer.initializeOptimization(0);
+
+//    std::cout << "Before HGPoint depth : "<< Optimizer::ComputeAvgChi2(vpEdgesStereoHG, 9999) << std::endl;
+    optimizer.optimize(5);
+//    std::cout << "After HGPoint depth : " << Optimizer::ComputeAvgChi2(vpEdgesStereoHG, 9999) << std::endl;
+
+
+    int inlierCount = 0;
+    for (size_t i = 0, iend = vpEdgesStereoHG.size(); i < iend; i++) {
+        g2o::EdgeInverseDepthPatch *e = vpEdgesStereoHG[i];
+
+        if (e->chi2() > thHuberSquared || !e->isDepthPositive()) {
+            e->setLevel(1);
+            hgPoint->obsCounter--;
+        } else
+            inlierCount++;
+
+        e->setRobustKernel(0);
+    }
+
+    if (inlierCount < 1)
+        return std::numeric_limits<double>::quiet_NaN();
+
+    optimizer.initializeOptimization(0);
+
+    for (int i = 0; i < 10; i++) {
+        optimizer.optimize(1);
+//        std::cout << "HGPoint depth: after 2nd " << i << " "
+//                  << Optimizer::ComputeAvgChi2(vpEdgesStereoHG, thHuberSquared) << std::endl;
+
+    }
+
+//    std::cout << "Final depth based on " << hgPoint->obsCounter << " out of " << vpEdgesStereoHG.size() << " : " << 1/vPoint->estimate() << " m" << std::endl;
+
+    vPoint = static_cast<g2o::VertexSBAPointInvD *>(optimizer.vertex(hgPoint->id + maxKFid + 1));
+
+    hgPoint->invDepth = vPoint->estimate();
+
+    return Optimizer::ComputeAvgChi2Double(vpEdgesStereoHG, thHuberSquared);
+
+//    std::cout << "Optimizer::LocalPhotometricBundleAdjustment -- END" << std::endl;
+//    std::cout << "-- -- -- -- -- -- " << std::endl;
+}
+
+void Optimizer::OptimizeInitialHGPointDepth(list<KeyFrame*> &lLocalKeyFrames, vector<HighGradientPoint*> &hgMap) {
+    std::vector<double> chi2stats;
+    for (auto &hgPoint : hgMap) {
+        double chi2 = Optimizer::OptimizeInitialHGPointDepth(lLocalKeyFrames, hgPoint);
+        chi2stats.push_back(chi2);
+    }
+
+    int count = 0;
+    for (auto &chi2 : chi2stats) {
+        if (chi2 < 100)
+            count ++;
+        std::cout << "Chi2 : " << chi2 << std::endl;
+    }
+
+    std::cout << "DEPTH TEST: " << count << " out of " << chi2stats.size() << " are sensible" << std::endl;
+
+
+}
 
 void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
