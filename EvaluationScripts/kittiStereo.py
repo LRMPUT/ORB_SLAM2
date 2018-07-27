@@ -15,9 +15,9 @@ else:
 
 
 sequences = [
-    '00', \
-    '01', \
-    '02', \
+#    '00', \
+#    '01', \
+#    '02', \
     '03', \
     '04', \
     '05', \
@@ -29,9 +29,9 @@ sequences = [
     ];
 
 yamls = [
-    'KITTI00-02.yaml', \
-    'KITTI00-02.yaml', \
-    'KITTI00-02.yaml', \
+#    'KITTI00-02.yaml', \
+#    'KITTI00-02.yaml', \
+#    'KITTI00-02.yaml', \
     'KITTI03.yaml', \
     'KITTI04-12.yaml', \
     'KITTI04-12.yaml', \
@@ -45,8 +45,8 @@ yamls = [
 runsPerSequence = 1;
 
 
-# mainDatasetPath = '/mnt/data/Datasets/kitti/sequences';
-mainDatasetPath = '/media/michalnowicki/MNowicki-Private/KITTI/dataset';
+mainDatasetPath = '/mnt/data/Datasets/kitti/sequences';
+#mainDatasetPath = '/media/michalnowicki/MNowicki-Private/KITTI/dataset';
 
 print 'mainDatasetPath: ' + mainDatasetPath
 
