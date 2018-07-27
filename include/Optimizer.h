@@ -26,6 +26,7 @@
 #include "KeyFrame.h"
 #include "LoopClosing.h"
 #include "Frame.h"
+#include <limits>
 
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
 #include "Thirdparty/g2o/g2o/core/block_solver.h"
@@ -70,8 +71,12 @@ public:
     void static LocalPhotometricBundleAdjustment(list<KeyFrame*> &lLocalKeyFrames, std::list<HighGradientPoint*> &lHGMap, bool *pbStopFlag, Map *pMap, int optimizationLvL, bool bDoMoreAtAll);
     static g2o::EdgeInverseDepthPatch* AddEdgeInverseDepthPatch(g2o::SparseOptimizer &optimizer, int featureId, KeyFrame* refKF, KeyFrame* curKF, double thHuber);
 
+    double static OptimizeInitialHGPointDepth(list<KeyFrame*> &lLocalKeyFrames, HighGradientPoint* hgPoint);
+    void static OptimizeInitialHGPointDepth(list<KeyFrame*> &lLocalKeyFrames, vector<HighGradientPoint*> &hgMap);
+
     static std::string ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges, vector<MapPoint*> &vpMapPointEdgeStereo, double thHuberSquared);
     static std::string ComputeAvgChi2(std::vector<g2o::EdgeInverseDepthPatch*> &edges, double thHuberSquared);
+    static double ComputeAvgChi2Double(std::vector<g2o::EdgeInverseDepthPatch*> &edges, double thHuberSquared);
 };
 
 } //namespace ORB_SLAM

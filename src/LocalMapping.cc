@@ -216,6 +216,9 @@ void LocalMapping::ProcessNewKeyFrame()
     const int minBorderY = mpCurrentKeyFrame->mnMinY;
     const int maxBorderY = mpCurrentKeyFrame->mnMaxY;
 
+    //Optimizer::OptimizeInitialHGPointDepth(pbaKeyFrames, mpCurrentKeyFrame->mHGPoints[0]);
+    Optimizer::OptimizeInitialHGPointDepth(pbaKeyFrames, mpCurrentKeyFrame->mHGPoints);
+
     std::cout << "HighGradientPoint::DistributeOctTree: BEFORE: " << hgMap.size() << std::endl;
     hgMap = HighGradientPoint::DistributeOctTree(mpCurrentKeyFrame, hgMap, minBorderX, maxBorderX,
                                                  minBorderY, maxBorderY, PBA_ACTIVE_HGPOINT_NUMBER);
